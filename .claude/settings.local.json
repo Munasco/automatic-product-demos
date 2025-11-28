@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm add:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm install)",
+      "Bash(pnpm remove:*)",
+      "Bash(pnpm test:run:*)",
+      "Bash(npx convex dev:*)",
+      "WebFetch(domain:v6.ai-sdk.dev)",
+      "Bash(pnpm lint:*)",
+      "Bash(curl -X POST http://localhost:3000/api/chat -H \"Content-Type: application/json\" -d '{\"\"\"\"messages\"\"\"\":[{\"\"\"\"role\"\"\"\":\"\"\"\"user\"\"\"\",\"\"\"\"parts\"\"\"\":[{\"\"\"\"type\"\"\"\":\"\"\"\"text\"\"\"\",\"\"\"\"text\"\"\"\":\"\"\"\"Say hello in 5 words\"\"\"\"}]}]}')",
+      "Bash(curl:*)",
+      "Bash(lsof:*)",
+      "Bash(pnpm tsc:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
