@@ -16,13 +16,23 @@ export default defineSchema({
     role: v.union(v.literal("user"), v.literal("assistant")),
     content: v.string(),
     createdAt: v.number(),
-    streamId: v.optional(v.string()), // For persistent streaming
+    streamId: v.optional(v.string()), // For persistent text streaming
     attachments: v.optional(v.array(v.object({
       name: v.string(),
       type: v.string(),
-      url: v.string(), // base64 data URL or storage URL
+      url: v.string(),
     }))),
   }).index("by_chat", ["chatId", "createdAt"]),
+
+  // Stream metadata for looking up chat context from HTTP actions
+  streamMetadata: defineTable({
+    streamId: v.string(),
+    chatId: v.id("chats"),
+    messageId: v.id("messages"),
+    model: v.string(),
+    sessionId: v.optional(v.string()), // Browser session that created this stream
+    createdAt: v.number(),
+  }).index("by_stream", ["streamId"]),
 
   // Comments on message selections (Google Docs style)
   comments: defineTable({
@@ -49,11 +59,38 @@ export default defineSchema({
 
   // Canvas documents (code/text editor)
   canvasDocuments: defineTable({
-    chatId: v.id("chats"),
+    chatId: v.optional(v.id("chats")),
     title: v.string(),
     content: v.string(),
     language: v.string(),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_chat", ["chatId", "updatedAt"]),
+  }).index("by_chat", ["chatId", "updatedAt"])
+    .index("by_updated", ["updatedAt"]),
+
+  // Canvas comments (inline and general)
+  canvasComments: defineTable({
+    canvasDocumentId: v.id("canvasDocuments"),
+    type: v.union(v.literal("inline"), v.literal("general")),
+    selectionStart: v.optional(v.number()),
+    selectionEnd: v.optional(v.number()),
+    selectedText: v.optional(v.string()),
+    content: v.string(),
+    author: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    resolved: v.boolean(),
+    status: v.optional(v.union(v.literal("pending"), v.literal("reviewing"))),
+  })
+    .index("by_canvas", ["canvasDocumentId", "createdAt"])
+    .index("by_canvas_unresolved", ["canvasDocumentId", "resolved"]),
+
+  // Canvas comment replies
+  canvasCommentReplies: defineTable({
+    commentId: v.id("canvasComments"),
+    content: v.string(),
+    author: v.string(),
+    isAI: v.boolean(),
+    createdAt: v.number(),
+  }).index("by_comment", ["commentId", "createdAt"]),
 });

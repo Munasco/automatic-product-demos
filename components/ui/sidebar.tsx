@@ -98,7 +98,9 @@ function Sidebar({
       data-state={open ? "open" : "closed"}
       className={cn(
         "flex h-screen flex-col bg-background-sidebar transition-[width] duration-200 ease-in-out overflow-hidden",
-        open ? "w-[var(--sidebar-width)]" : "w-[var(--sidebar-width-collapsed)]",
+        open
+          ? "w-[var(--sidebar-width)]"
+          : "w-[var(--sidebar-width-collapsed)]",
         className
       )}
       {...props}
@@ -108,51 +110,41 @@ function Sidebar({
   );
 }
 
-function SidebarHeader({
-  className,
-  ...props
-}: React.ComponentProps<"div">) {
+function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
-    <div
-      className={cn("flex flex-col gap-2 p-3", className)}
-      {...props}
-    />
+    <div className={cn("flex flex-col gap-2 p-3", className)} {...props} />
   );
 }
 
-function SidebarContent({
-  className,
-  ...props
-}: React.ComponentProps<"div">) {
+const SidebarContent = React.forwardRef<
+  HTMLDivElement,
+  React.ComponentProps<"div">
+>(({ className, ...props }, ref) => {
   return (
     <div
+      ref={ref}
       className={cn("flex-1 overflow-auto px-3", className)}
       {...props}
     />
   );
-}
+});
+SidebarContent.displayName = "SidebarContent";
 
-function SidebarFooter({
-  className,
-  ...props
-}: React.ComponentProps<"div">) {
+function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      className={cn("flex flex-col gap-2 p-3 border-t border-border", className)}
+      className={cn(
+        "flex flex-col gap-2 p-3 border-t border-border",
+        className
+      )}
       {...props}
     />
   );
 }
 
-function SidebarGroup({
-  className,
-  ...props
-}: React.ComponentProps<"div">) {
+function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
-    <div
-      className={cn("flex flex-col gap-1 pb-4", className)}
-      {...props}
-    />
+    <div className={cn("flex flex-col gap-1 pb-4", className)} {...props} />
   );
 }
 
@@ -175,24 +167,14 @@ function SidebarGroupContent({
   className,
   ...props
 }: React.ComponentProps<"div">) {
-  return (
-    <div className={cn("space-y-0.5", className)} {...props} />
-  );
+  return <div className={cn("space-y-0.5", className)} {...props} />;
 }
 
-function SidebarMenu({
-  className,
-  ...props
-}: React.ComponentProps<"ul">) {
-  return (
-    <ul className={cn("flex flex-col gap-0.5", className)} {...props} />
-  );
+function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
+  return <ul className={cn("flex flex-col gap-0.5", className)} {...props} />;
 }
 
-function SidebarMenuItem({
-  className,
-  ...props
-}: React.ComponentProps<"li">) {
+function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
   return <li className={cn("", className)} {...props} />;
 }
 
@@ -252,10 +234,7 @@ function SidebarTrigger({
   );
 }
 
-function SidebarInset({
-  className,
-  ...props
-}: React.ComponentProps<"main">) {
+function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
   return (
     <main
       className={cn("flex flex-1 flex-col min-w-0", className)}

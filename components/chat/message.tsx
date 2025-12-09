@@ -3,11 +3,7 @@
 import { useState } from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import {
   Copy,
   Volume2,
@@ -17,12 +13,14 @@ import {
   GitFork,
   Check,
   MessageSquare,
-  ChevronDown,
-  ChevronRight,
-  Brain,
 } from "lucide-react";
 import { MarkdownRenderer } from "./markdown-renderer";
-import type { Message } from "../../types/chat";
+
+interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+}
 
 interface ChatMessageProps {
   message: Message;
@@ -42,7 +40,6 @@ export function ChatMessage({
   commentCount = 0,
 }: ChatMessageProps) {
   const [copied, setCopied] = useState(false);
-  const [reasoningOpen, setReasoningOpen] = useState(false);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(message.content);
@@ -51,40 +48,10 @@ export function ChatMessage({
   };
 
   const isUser = message.role === "user";
-  const hasReasoning = message.reasoning && message.reasoning.length > 0;
 
   return (
     <div className={cn("group py-4", isUser ? "flex justify-end" : "")}>
-      <div
-        className={cn(
-          isUser ? "max-w-[70%] ml-auto" : "max-w-[85%] md:max-w-[75%] mr-auto"
-        )}
-      >
-        {/* Reasoning/Thinking Section */}
-        {hasReasoning && !isUser && (
-          <div className="mb-2">
-            <button
-              onClick={() => setReasoningOpen(!reasoningOpen)}
-              className="flex items-center gap-2 text-sm text-foreground-muted hover:text-foreground transition-colors"
-            >
-              {reasoningOpen ? (
-                <ChevronDown className="size-4" />
-              ) : (
-                <ChevronRight className="size-4" />
-              )}
-              <Brain className="size-4" />
-              <span>{isStreaming ? "Thinking..." : "View reasoning"}</span>
-            </button>
-            {reasoningOpen && (
-              <div className="mt-2 p-3 rounded-lg bg-zinc-800/50 border border-zinc-700 text-sm text-foreground-muted">
-                <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed">
-                  {message.reasoning}
-                </pre>
-              </div>
-            )}
-          </div>
-        )}
-
+      <div className={cn(isUser ? "max-w-[70%] ml-auto" : "")}>
         {/* Message Content */}
         <div
           className={cn(
@@ -93,14 +60,19 @@ export function ChatMessage({
               : "px-4 py-1 text-foreground"
           )}
         >
-          <div className={cn("prose prose-invert max-w-none", isUser && "text-[15px]")}>
+          <div
+            className={cn(
+              "prose prose-invert max-w-none",
+              isUser && "text-[15px]"
+            )}
+          >
             <MarkdownRenderer content={message.content} />
           </div>
         </div>
 
         {/* Action Buttons */}
-        {showActions && !isStreaming && (
-          <div className="flex items-center gap-1 mt-2 opacity-0 hover:opacity-100 transition-opacity">
+        {showActions && !isStreaming && message.content && (
+          <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -203,4 +175,3 @@ export function ChatMessage({
     </div>
   );
 }
-

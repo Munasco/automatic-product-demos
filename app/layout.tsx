@@ -5,7 +5,7 @@ import { ConvexClientProvider } from "../lib/convex";
 import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
-  title: "Claude Code",
+  title: "Tennant Chat",
   description: "AI-powered coding assistant",
 };
 

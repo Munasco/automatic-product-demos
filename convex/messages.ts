@@ -1,13 +1,39 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, action, internalMutation } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
-import { components } from "./_generated/api";
-import { PersistentTextStreaming } from "@convex-dev/persistent-text-streaming";
-import type { StreamId } from "@convex-dev/persistent-text-streaming";
+import { createOpenAI } from "@ai-sdk/openai";
+import { generateText } from "ai";
 
-const persistentTextStreaming = new PersistentTextStreaming(
-  components.persistentTextStreaming
-);
+const openai = createOpenAI({
+  apiKey: process.env.OPENAI_KEY || process.env.OPENAI_API_KEY,
+});
+
+// Get messages for a chat with pagination
+export const list = query({
+  args: {
+    chatId: v.id("chats"),
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("messages")
+      .withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
+      .order("asc")
+      .paginate(args.paginationOpts);
+  },
+});
+
+// Get all messages for a chat (without pagination)
+export const getAll = query({
+  args: { chatId: v.id("chats") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("messages")
+      .withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
+      .order("asc")
+      .collect();
+  },
+});
 
 // Add a message to a chat
 export const add = mutation({
@@ -22,59 +48,25 @@ export const add = mutation({
     }))),
   },
   handler: async (ctx, args) => {
-    const chat = await ctx.db.get(args.chatId);
-    if (!chat) throw new Error("Chat not found");
-
-    const now = Date.now();
-
-    // Insert the message
     const messageId = await ctx.db.insert("messages", {
       chatId: args.chatId,
       role: args.role,
       content: args.content,
-      createdAt: now,
+      createdAt: Date.now(),
       attachments: args.attachments,
     });
 
-    // Update chat's updatedAt and potentially title
-    const messages = await ctx.db
-      .query("messages")
-      .withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
-      .collect();
-
-    const updates: { updatedAt: number; title?: string } = { updatedAt: now };
-
-    // Update title from first user message if chat is new
-    if (messages.length === 1 && args.role === "user") {
-      updates.title =
-        args.content.length > 50
-          ? args.content.slice(0, 50) + "..."
-          : args.content;
-    }
-
-    await ctx.db.patch(args.chatId, updates);
+    // Update chat's updatedAt
+    await ctx.db.patch(args.chatId, {
+      updatedAt: Date.now(),
+    });
 
     return messageId;
   },
 });
 
-// Get messages for a chat
-export const list = query({
-  args: {
-    chatId: v.id("chats"),
-    paginationOpts: paginationOptsValidator,
-  },
-  handler: async (ctx, args) => {
-    return ctx.db
-      .query("messages")
-      .withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
-      .order("desc")
-      .paginate(args.paginationOpts);
-  },
-});
-
-// Update the last message content (for streaming)
-export const updateContent = mutation({
+// Update a message's content
+export const update = mutation({
   args: {
     messageId: v.id("messages"),
     content: v.string(),
@@ -86,55 +78,79 @@ export const updateContent = mutation({
   },
 });
 
-// Create a message with a stream for AI responses
-export const createWithStream = mutation({
-  args: {
-    chatId: v.id("chats"),
-    role: v.union(v.literal("user"), v.literal("assistant")),
-    content: v.string(),
-    attachments: v.optional(v.array(v.object({
-      name: v.string(),
-      type: v.string(),
-      url: v.string(),
-    }))),
-  },
+// Delete a message
+export const remove = mutation({
+  args: { messageId: v.id("messages") },
   handler: async (ctx, args) => {
-    const chat = await ctx.db.get(args.chatId);
-    if (!chat) throw new Error("Chat not found");
-
-    const now = Date.now();
-    
-    // Create stream for assistant messages
-    const streamId = args.role === "assistant" 
-      ? await persistentTextStreaming.createStream(ctx)
-      : undefined;
-
-    // Insert the message
-    const messageId = await ctx.db.insert("messages", {
-      chatId: args.chatId,
-      role: args.role,
-      content: args.content,
-      createdAt: now,
-      streamId,
-      attachments: args.attachments,
-    });
-
-    // Update chat's updatedAt
-    await ctx.db.patch(args.chatId, { updatedAt: now });
-
-    return { messageId, streamId };
+    await ctx.db.delete(args.messageId);
   },
 });
 
-// Get stream body for a message
-export const getStreamBody = query({
+// Clear all messages from a chat
+export const clearChat = mutation({
+  args: { chatId: v.id("chats") },
+  handler: async (ctx, args) => {
+    const messages = await ctx.db
+      .query("messages")
+      .withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
+      .collect();
+
+    for (const message of messages) {
+      await ctx.db.delete(message._id);
+    }
+  },
+});
+
+// Generate title action
+export const generateTitle = action({
   args: {
-    streamId: v.string(),
+    message: v.string(),
+    model: v.optional(v.string()),
+  },
+  handler: async (_ctx, args) => {
+    const { text } = await generateText({
+      model: openai(args.model || "gpt-5.1-mini"),
+      system: "Generate a very short title (3-6 words) for this chat based on the user's message. No quotes, no punctuation at the end.",
+      prompt: args.message,
+    });
+    return text.trim();
+  },
+});
+
+// Sync messages from AI SDK (called by HTTP action onFinish)
+export const syncMessages = internalMutation({
+  args: {
+    chatId: v.id("chats"),
+    messages: v.array(v.object({
+      role: v.union(v.literal("user"), v.literal("assistant")),
+      content: v.string(),
+    })),
   },
   handler: async (ctx, args) => {
-    return await persistentTextStreaming.getStreamBody(
-      ctx,
-      args.streamId as StreamId
-    );
+    // Get existing messages
+    const existing = await ctx.db
+      .query("messages")
+      .withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
+      .order("asc")
+      .collect();
+
+    // Only add new messages (compare by content to avoid duplicates)
+    const existingContents = new Set(existing.map(m => m.content));
+
+    for (const msg of args.messages) {
+      if (!existingContents.has(msg.content) && msg.content.trim()) {
+        await ctx.db.insert("messages", {
+          chatId: args.chatId,
+          role: msg.role,
+          content: msg.content,
+          createdAt: Date.now(),
+        });
+      }
+    }
+
+    // Update chat timestamp
+    await ctx.db.patch(args.chatId, {
+      updatedAt: Date.now(),
+    });
   },
 });

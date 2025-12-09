@@ -1,13 +1,11 @@
 "use client";
 
-import { useRef, useEffect, KeyboardEvent, ChangeEvent } from "react";
-import { cn } from "../../lib/utils";
-import { Button } from "../ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../ui/tooltip";
+import { useRef, KeyboardEvent, ChangeEvent } from "react";
+import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { ModelType, AVAILABLE_MODELS } from "@/stores/atoms";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,20 +29,6 @@ import {
   FileText,
 } from "lucide-react";
 
-export interface ModelOption {
-  id: string;
-  name: string;
-  description: string;
-  icon: "zap" | "brain" | "cpu";
-}
-
-export const AVAILABLE_MODELS: ModelOption[] = [
-  { id: "gpt-5.1", name: "GPT-5.1", description: "Great for most tasks", icon: "zap" },
-  { id: "gpt-5.1-mini", name: "GPT-5.1 mini", description: "Faster, lighter tasks", icon: "cpu" },
-  { id: "gpt-5.1-thinking", name: "GPT-5.1 high", description: "Uses advanced reasoning", icon: "brain" },
-  { id: "gpt-5.1-thinking-low", name: "GPT-5.1 thinking low", description: "Faster reasoning", icon: "brain" },
-];
-
 export interface AttachedFile {
   id: string;
   file: File;
@@ -58,8 +42,8 @@ interface ChatInputProps {
   onStop?: () => void;
   isLoading?: boolean;
   placeholder?: string;
-  selectedModel?: string;
-  onModelChange?: (modelId: string) => void;
+  selectedModel?: ModelType;
+  onModelChange?: (modelId: ModelType) => void;
   onToggleCanvas?: () => void;
   onToggleComments?: () => void;
   canvasOpen?: boolean;
@@ -84,15 +68,19 @@ export function ChatInput({
   files = [],
   onFilesChange,
 }: ChatInputProps) {
-  const currentModel = AVAILABLE_MODELS.find((m) => m.id === selectedModel) || AVAILABLE_MODELS[0];
+  const currentModel =
+    AVAILABLE_MODELS.find((m) => m.id === selectedModel) || AVAILABLE_MODELS[0];
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const getModelIcon = (iconType: "zap" | "brain" | "cpu") => {
     switch (iconType) {
-      case "zap": return <Zap className="size-3" />;
-      case "brain": return <Brain className="size-3" />;
-      case "cpu": return <Cpu className="size-3" />;
+      case "zap":
+        return <Zap className="size-3" />;
+      case "brain":
+        return <Brain className="size-3" />;
+      case "cpu":
+        return <Cpu className="size-3" />;
     }
   };
 
@@ -101,7 +89,9 @@ export function ChatInput({
     const newFiles: AttachedFile[] = selectedFiles.map((file) => ({
       id: Math.random().toString(36).slice(2),
       file,
-      preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
+      preview: file.type.startsWith("image/")
+        ? URL.createObjectURL(file)
+        : undefined,
     }));
     onFilesChange?.([...files, ...newFiles]);
     e.target.value = "";
@@ -113,15 +103,6 @@ export function ChatInput({
     onFilesChange?.(files.filter((f) => f.id !== id));
   };
 
-  // Auto-resize textarea
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = "auto";
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
-    }
-  }, [value]);
-
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -132,10 +113,10 @@ export function ChatInput({
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto px-4 pb-4">
+    <div className="w-full max-w-5xl mx-auto px-4 pb-4">
       <div className="relative bg-background-secondary rounded-2xl border border-border-input">
         {/* Hidden file input */}
-        <input
+        <Input
           ref={fileInputRef}
           type="file"
           multiple
@@ -151,19 +132,25 @@ export function ChatInput({
               <div key={f.id} className="relative group">
                 {f.preview ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={f.preview} alt={f.file.name} className="h-16 w-16 object-cover rounded-lg border border-border" />
+                  <img
+                    src={f.preview}
+                    alt={f.file.name}
+                    className="h-16 w-16 object-cover rounded-lg border border-border"
+                  />
                 ) : (
                   <div className="h-16 w-16 flex flex-col items-center justify-center bg-background-tertiary rounded-lg border border-border">
                     <FileText className="size-5 text-foreground-muted" />
-                    <span className="text-[10px] text-foreground-muted mt-1 truncate max-w-14 px-1">{f.file.name.split(".").pop()}</span>
+                    <span className="text-[10px] text-foreground-muted mt-1 truncate max-w-14 px-1">
+                      {f.file.name.split(".").pop()}
+                    </span>
                   </div>
                 )}
-                <button
+                <Button
                   onClick={() => removeFile(f.id)}
                   className="absolute -top-1 -right-1 size-5 bg-background rounded-full border border-border flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   <X className="size-3" />
-                </button>
+                </Button>
               </div>
             ))}
           </div>
@@ -193,7 +180,12 @@ export function ChatInput({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={cn("size-8", files.length > 0 ? "text-accent" : "text-foreground-muted hover:text-foreground")}
+                  className={cn(
+                    "size-8",
+                    files.length > 0
+                      ? "text-accent"
+                      : "text-foreground-muted hover:text-foreground"
+                  )}
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <Plus className="size-5" />
@@ -266,7 +258,9 @@ export function ChatInput({
                     <div className="mt-0.5">{getModelIcon(model.icon)}</div>
                     <div className="flex flex-col gap-0.5">
                       <span className="font-medium">{model.name}</span>
-                      <span className="text-xs text-foreground-muted">{model.description}</span>
+                      <span className="text-xs text-foreground-muted">
+                        {model.description}
+                      </span>
                     </div>
                   </DropdownMenuItem>
                 ))}

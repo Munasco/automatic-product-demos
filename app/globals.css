@@ -5,8 +5,10 @@
 
 :root {
   /* Apple System Font Stack */
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
-  --font-mono: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", "Droid Sans Mono", "Source Code Pro", monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "SF Pro Text", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+  --font-mono: "SF Mono", "Monaco", "Inconsolata", "Fira Mono",
+    "Droid Sans Mono", "Source Code Pro", monospace;
 
   /* ChatGPT Dark Theme Colors */
   --background: #212121;
@@ -208,8 +210,13 @@ code {
 
 /* Spinner animation */
 @keyframes spinner-blade {
-  0% { opacity: 0.85; }
-  50% { opacity: 0.25; }
-  100% { opacity: 0.25; }
+  0% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 0.25;
+  }
+  100% {
+    opacity: 0.25;
+  }
 }
-

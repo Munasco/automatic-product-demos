@@ -1,22 +1,18 @@
 "use client";
 
-import { useRef, useEffect, useState, useCallback } from "react";
-import { ScrollArea } from "../ui/scroll-area";
+import { useState, useCallback, useRef } from "react";
 import { ChatMessage } from "./message";
 import { ChatInput, type AttachedFile } from "./chat-input";
 import { ThinkingIndicator } from "./thinking-indicator";
 import { Button } from "../ui/button";
 import { ArrowDown } from "lucide-react";
-import type { Message } from "../../types/chat";
-import type { Id } from "../../convex/_generated/dataModel";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { type ModelType } from "@/stores/atoms";
 
-interface Comment {
-  _id: Id<"comments">;
-  messageId: Id<"messages">;
-  selectionStart: number;
-  selectionEnd: number;
-  selectedText: string;
-  resolved: boolean;
+interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
 }
 
 interface ChatContainerProps {
@@ -28,18 +24,15 @@ interface ChatContainerProps {
   onFork?: (messageIndex: number) => void;
   onRegenerate?: (messageIndex: number) => void;
   isLoading?: boolean;
-  isLoadingHistory?: boolean;
-  comments?: Comment[];
+  isLoadingMessages?: boolean;
   onToggleCanvas?: () => void;
   onToggleComments?: () => void;
   canvasOpen?: boolean;
   commentsOpen?: boolean;
-  selectedModel?: string;
-  onModelChange?: (modelId: string) => void;
+  selectedModel?: ModelType;
+  onModelChange?: (modelId: ModelType) => void;
   files?: AttachedFile[];
   onFilesChange?: (files: AttachedFile[]) => void;
-  onLoadMore?: (numItems: number) => void;
-  hasMore?: boolean;
 }
 
 export function ChatContainer({
@@ -51,8 +44,7 @@ export function ChatContainer({
   onFork,
   onRegenerate,
   isLoading = false,
-  isLoadingHistory = false,
-  comments = [],
+  isLoadingMessages = false,
   onToggleCanvas,
   onToggleComments,
   canvasOpen,
@@ -61,71 +53,54 @@ export function ChatContainer({
   onModelChange,
   files,
   onFilesChange,
-  onLoadMore,
-  hasMore = false,
 }: ChatContainerProps) {
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const scrollBottomRef = useRef<HTMLDivElement>(null);
 
-  // Scroll to bottom function (manual button only)
   const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    scrollBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
-  // Handle scroll to show/hide scroll button and load more
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
-    const isAtBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 100;
+    const isAtBottom =
+      target.scrollHeight - target.scrollTop - target.clientHeight < 100;
     setShowScrollButton(!isAtBottom);
+  }, []);
 
-    // Load more when scrolling to top
-    if (target.scrollTop === 0 && hasMore && onLoadMore) {
-      onLoadMore(20);
-    }
-  }, [hasMore, onLoadMore]);
-
-  // Scroll to bottom ONCE when user submits (loading starts)
-  const prevIsLoading = useRef(isLoading);
-  useEffect(() => {
-    if (isLoading && !prevIsLoading.current && bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: "instant" });
-    }
-    prevIsLoading.current = isLoading;
-  }, [isLoading]);
-
-  const isEmpty = messages.length === 0 && !isLoadingHistory;
+  const isEmpty = messages.length === 0 && !isLoadingMessages;
 
   return (
     <div className="flex flex-col h-full w-full flex-1">
       {/* Messages area */}
       <div className="flex-1 overflow-hidden relative">
-        {isEmpty ? (
-          <EmptyState />
+        {isLoadingMessages ? (
+          <LoadingState />
+        ) : isEmpty ? (
+          <NoMessagesSent />
         ) : (
-          <ScrollArea className="h-full" onScrollCapture={handleScroll}>
-            <div ref={scrollAreaRef} className="max-w-3xl mx-auto px-4 py-6">
-              {messages.map((message, index) => {
-                const messageComments = comments.filter(
-                  (c) => c.messageId === message.id
-                );
-
-                return (
-                  <ChatMessage
-                    key={message.id}
-                    message={message}
-                    isStreaming={isLoading && index === messages.length - 1 && message.role === "assistant"}
-                    onFork={() => onFork?.(index)}
-                    onRegenerate={() => onRegenerate?.(index)}
-                    commentCount={messageComments.length}
-                  />
-                );
-              })}
+          <ScrollArea className="h-full" onScroll={handleScroll}>
+            <div className="max-w-5xl mx-auto px-4 py-6">
+              {messages.map((message, index) => (
+                <ChatMessage
+                  key={message.id}
+                  message={message}
+                  isStreaming={
+                    isLoading &&
+                    index === messages.length - 1 &&
+                    message.role === "assistant"
+                  }
+                  onFork={() => onFork?.(index)}
+                  onRegenerate={() => onRegenerate?.(index)}
+                />
+              ))}
               {/* Show thinking indicator when loading and no assistant message yet */}
-              {isLoading && (messages.length === 0 || messages[messages.length - 1]?.role === "user") && (
-                <ThinkingIndicator title="Thinking" isThinking={true} />
-              )}
-              <div ref={bottomRef} />
+              {isLoading &&
+                (messages.length === 0 ||
+                  messages[messages.length - 1]?.role === "user") && (
+                  <ThinkingIndicator title="Thinking" isThinking={true} />
+                )}
+              <div ref={scrollBottomRef} />
             </div>
           </ScrollArea>
         )}
@@ -163,12 +138,24 @@ export function ChatContainer({
   );
 }
 
-function EmptyState() {
+function NoMessagesSent() {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-4">
       <h1 className="text-3xl font-medium text-foreground">
         What&apos;s on your mind today?
       </h1>
+    </div>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div className="flex flex-col items-center justify-center h-full">
+      <div className="flex items-center gap-2">
+        <div className="w-2 h-2 bg-foreground-muted rounded-full animate-pulse" />
+        <div className="w-2 h-2 bg-foreground-muted rounded-full animate-pulse [animation-delay:150ms]" />
+        <div className="w-2 h-2 bg-foreground-muted rounded-full animate-pulse [animation-delay:300ms]" />
+      </div>
     </div>
   );
 }

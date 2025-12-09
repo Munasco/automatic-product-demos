@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useEffect, useCallback } from "react";
+import { memo, useState, useCallback, use, useMemo, Suspense } from "react";
 import { Check, Copy } from "lucide-react";
 
 // Singleton highlighter - created once, reused everywhere
@@ -57,17 +57,22 @@ interface Props {
   lang: string;
 }
 
-export const CodeBlock = memo(function CodeBlock({ code, lang }: Props) {
-  const [html, setHtml] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+export const CodeBlock = memo(function CodeBlock(props: Props) {
+  return (
+    <Suspense fallback={<CodeBlockContent {...props} html={null} />}>
+      <CodeBlockAsync {...props} />
+    </Suspense>
+  );
+});
 
-  useEffect(() => {
-    let active = true;
-    highlight(code, lang).then((result) => {
-      if (active) setHtml(result);
-    });
-    return () => { active = false; };
-  }, [code, lang]);
+function CodeBlockAsync({ code, lang }: Props) {
+  const htmlPromise = useMemo(() => highlight(code, lang), [code, lang]);
+  const html = use(htmlPromise);
+  return <CodeBlockContent code={code} lang={lang} html={html} />;
+}
+
+function CodeBlockContent({ code, lang, html }: Props & { html: string | null }) {
+  const [copied, setCopied] = useState(false);
 
   const copy = useCallback(async () => {
     await navigator.clipboard.writeText(code);
@@ -96,4 +101,4 @@ export const CodeBlock = memo(function CodeBlock({ code, lang }: Props) {
       </pre>
     </div>
   );
-});
+}

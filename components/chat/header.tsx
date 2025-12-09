@@ -1,15 +1,10 @@
 "use client";
 
 import { Button } from "../ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import {
   PanelLeft,
   ChevronDown,
-  PenSquare,
   Share,
   MessageSquare,
   Columns,
@@ -18,7 +13,6 @@ import { cn } from "../../lib/utils";
 
 interface HeaderProps {
   onToggleSidebar: () => void;
-  onNewChat: () => void;
   onToggleComments?: () => void;
   onToggleCanvas?: () => void;
   modelName?: string;
@@ -29,10 +23,9 @@ interface HeaderProps {
 
 export function Header({
   onToggleSidebar,
-  onNewChat,
   onToggleComments,
   onToggleCanvas,
-  modelName = "Tennant Chat",
+  modelName = "Chat",
   commentCount = 0,
   commentsOpen = false,
   canvasOpen = false,
@@ -54,30 +47,20 @@ export function Header({
           </TooltipTrigger>
           <TooltipContent side="bottom">Toggle sidebar</TooltipContent>
         </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-9 text-foreground-muted hover:text-foreground"
-              onClick={onNewChat}
-            >
-              <PenSquare className="size-5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">New chat</TooltipContent>
-        </Tooltip>
       </div>
 
-      {/* Center - Model Selector */}
-      <Button
-        variant="ghost"
-        className="gap-1.5 text-foreground font-medium hover:bg-background-hover"
-      >
-        {modelName}
-        <ChevronDown className="size-4 text-foreground-muted" />
-      </Button>
+      {/* Center - App Name & Model */}
+      <div className="flex items-center gap-2">
+        <span className="text-foreground font-semibold">Tennant Chat</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1 text-foreground-muted hover:bg-background-hover"
+        >
+          {modelName}
+          <ChevronDown className="size-3" />
+        </Button>
+      </div>
 
       {/* Right side */}
       <div className="flex items-center gap-2">

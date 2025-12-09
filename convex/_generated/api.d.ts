@@ -9,6 +9,8 @@
  */
 
 import type * as canvas from "../canvas.js";
+import type * as canvasComments from "../canvasComments.js";
+import type * as chat from "../chat.js";
 import type * as chats from "../chats.js";
 import type * as comments from "../comments.js";
 import type * as http from "../http.js";
@@ -22,6 +24,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   canvas: typeof canvas;
+  canvasComments: typeof canvasComments;
+  chat: typeof chat;
   chats: typeof chats;
   comments: typeof comments;
   http: typeof http;

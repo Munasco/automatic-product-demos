@@ -18,7 +18,10 @@ export function useChats() {
   return {
     chats: results || [],
     isLoading: status === "LoadingFirstPage",
-    loadMore,
+    isLoadingMore: status === "LoadingMore",
+    canLoadMore: status === "CanLoadMore",
+    isComplete: status === "Exhausted",
+    loadMore: () => loadMore(20),
     status,
     createChat: async (title?: string) => {
       return createChat({ title });
