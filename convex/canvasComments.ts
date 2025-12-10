@@ -1,6 +1,12 @@
 import { v } from "convex/values";
 import { mutation, query, action } from "./_generated/server";
 import { api } from "./_generated/api";
+import { createOpenAI } from "@ai-sdk/openai";
+import { generateText } from "ai";
+
+const openai = createOpenAI({
+  apiKey: process.env.OPENAI_KEY || process.env.OPENAI_API_KEY,
+});
 
 // Get all comments for a canvas document
 export const listByCanvas = query({
@@ -100,7 +106,7 @@ export const addReply = mutation({
   },
 });
 
-// Add AI reply to a canvas comment (small, concise response)
+// Add AI reply to a canvas comment (verbose, detailed response)
 export const addAIReply = action({
   args: {
     commentId: v.id("canvasComments"),
@@ -109,32 +115,26 @@ export const addAIReply = action({
     canvasContent: v.string(),
   },
   handler: async (ctx, args) => {
-    // Call OpenAI to generate a small, concise response
-    const openAIResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+    const prompt = `Comment: "${args.commentContent}"${args.selectedText ? `\n\nSelected text being discussed:\n"${args.selectedText}"` : ""}${args.canvasContent ? `\n\nFull document context:\n${args.canvasContent.slice(0, 2000)}` : ""}\n\nProvide a detailed, helpful response to this comment.`;
+
+    const { text } = await generateText({
+      model: openai("gpt-5.1"),
+      system: `You are a helpful assistant responding to comments in a code/document editor. Provide detailed, thorough, and verbose explanations. Be comprehensive and helpful.
+
+Key guidelines:
+- Give detailed explanations with examples when relevant
+- If explaining code, include code snippets
+- Break down complex topics into clear sections
+- Be educational and thorough`,
+      prompt,
+      providerOptions: {
+        openai: {
+          textVerbosity: "high",
+        },
       },
-      body: JSON.stringify({
-        model: "gpt-5.1-mini",
-        messages: [
-          {
-            role: "system",
-            content: `You are responding to a comment in a code/document editor. Keep your response very brief and concise (1-3 sentences max). Focus on directly addressing the comment. If the comment requires a full code rewrite or lengthy explanation, suggest switching to canvas mode instead.`,
-          },
-          {
-            role: "user",
-            content: `Comment: "${args.commentContent}"${args.selectedText ? `\nSelected text: "${args.selectedText}"` : ""}\n\nRespond to this comment briefly.`,
-          },
-        ],
-        max_tokens: 150,
-        temperature: 0.7,
-      }),
     });
 
-    const data = await openAIResponse.json();
-    const aiResponse = data.choices[0]?.message?.content || "I understand. Let me help with that.";
+    const aiResponse = text || "I understand. Let me help with that.";
 
     // Save the AI reply
     await ctx.runMutation(api.canvasComments.addReply, {

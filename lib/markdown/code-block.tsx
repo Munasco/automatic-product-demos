@@ -1,78 +1,56 @@
 "use client";
 
-import { memo, useState, useCallback, use, useMemo, Suspense } from "react";
+import { useState, useCallback, useEffect, memo } from "react";
 import { Check, Copy } from "lucide-react";
-
-// Singleton highlighter - created once, reused everywhere
-type Highlighter = Awaited<ReturnType<typeof import("shiki").createHighlighter>>;
-let highlighter: Highlighter | null = null;
-let highlighterPromise: Promise<Highlighter> | null = null;
-const loadedLangs = new Set<string>(["text", "plaintext"]);
-
-async function getHighlighter(): Promise<Highlighter | null> {
-  if (highlighter) return highlighter;
-  if (highlighterPromise) return highlighterPromise;
-
-  highlighterPromise = import("shiki").then(async (shiki) => {
-    highlighter = await shiki.createHighlighter({
-      themes: ["github-dark"],
-      langs: ["javascript", "typescript", "python", "bash", "json", "html", "css"],
-    });
-    ["javascript", "typescript", "python", "bash", "json", "html", "css"].forEach((l) => loadedLangs.add(l));
-    return highlighter;
-  });
-
-  return highlighterPromise;
-}
-
-async function highlight(code: string, lang: string): Promise<string | null> {
-  try {
-    const h = await getHighlighter();
-    if (!h) return null;
-
-    // Load language if not already loaded
-    const normalizedLang = lang.toLowerCase() || "text";
-    if (!loadedLangs.has(normalizedLang)) {
-      try {
-        await h.loadLanguage(normalizedLang as Parameters<typeof h.loadLanguage>[0]);
-        loadedLangs.add(normalizedLang);
-      } catch {
-        // Language not supported, use text
-      }
-    }
-
-    const safeLang = loadedLangs.has(normalizedLang) ? normalizedLang : "text";
-    const html = h.codeToHtml(code, { lang: safeLang, theme: "github-dark" });
-
-    // Extract just the code content
-    const match = html.match(/<code[^>]*>([\s\S]*)<\/code>/);
-    return match?.[1] ?? null;
-  } catch {
-    return null;
-  }
-}
+import { useAtomValue } from "jotai";
+import { codeThemeAtom } from "@/stores/code-theme";
+import { codeToTokens, type ThemedToken, type BundledLanguage } from "shiki";
 
 interface Props {
   code: string;
   lang: string;
 }
 
-export const CodeBlock = memo(function CodeBlock(props: Props) {
-  return (
-    <Suspense fallback={<CodeBlockContent {...props} html={null} />}>
-      <CodeBlockAsync {...props} />
-    </Suspense>
-  );
-});
-
-function CodeBlockAsync({ code, lang }: Props) {
-  const htmlPromise = useMemo(() => highlight(code, lang), [code, lang]);
-  const html = use(htmlPromise);
-  return <CodeBlockContent code={code} lang={lang} html={html} />;
+interface TokenResult {
+  tokens: ThemedToken[][];
+  bg: string;
 }
 
-function CodeBlockContent({ code, lang, html }: Props & { html: string | null }) {
+function CodeBlockInner({ code, lang }: Props) {
   const [copied, setCopied] = useState(false);
+  const [result, setResult] = useState<TokenResult | null>(null);
+  const theme = useAtomValue(codeThemeAtom);
+
+  useEffect(() => {
+    console.log('[CodeBlock] useEffect triggered', { lang, codeLength: code.length, theme });
+    let active = true;
+
+    codeToTokens(code, { lang: (lang || "text") as BundledLanguage, theme })
+      .then((res) => {
+        console.log('[CodeBlock] codeToTokens resolved', { active, lines: res.tokens.length });
+        if (active) {
+          setResult({
+            tokens: res.tokens,
+            bg: res.bg || "#0d1117",
+          });
+        }
+      })
+      .catch((err) => {
+        console.log('[CodeBlock] codeToTokens error', { active, err });
+        if (active) {
+          // Fallback - plain tokens
+          setResult({
+            tokens: code.split("\n").map((line) => [{ content: line, color: "#e6edf3" }] as ThemedToken[]),
+            bg: "#0d1117",
+          });
+        }
+      });
+
+    return () => {
+      console.log('[CodeBlock] cleanup', { lang, codeLength: code.length });
+      active = false;
+    };
+  }, [code, lang, theme]);
 
   const copy = useCallback(async () => {
     await navigator.clipboard.writeText(code);
@@ -81,24 +59,47 @@ function CodeBlockContent({ code, lang, html }: Props & { html: string | null })
   }, [code]);
 
   return (
-    <div className="group my-4 rounded-lg overflow-hidden bg-background-sidebar border border-border">
-      <div className="flex items-center justify-between px-4 py-2 bg-background-secondary/50 border-b border-border">
-        <span className="text-xs text-foreground-muted font-mono">{lang || "text"}</span>
-        <button onClick={copy} className="p-1 rounded hover:bg-background-hover transition-colors">
+    <div className="group my-4 overflow-hidden border border-[#30363d]">
+      <div className="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-[#30363d]">
+        <span className="text-xs text-zinc-400 font-mono">{lang || "text"}</span>
+        <button
+          onClick={copy}
+          className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors"
+        >
           {copied ? (
-            <Check size={14} className="text-accent" />
+            <>
+              <Check size={12} /> Copied
+            </>
           ) : (
-            <Copy size={14} className="text-foreground-muted" />
+            <>
+              <Copy size={12} /> Copy
+            </>
           )}
         </button>
       </div>
-      <pre className="overflow-x-auto p-4 text-sm leading-relaxed font-mono">
-        {html ? (
-          <code dangerouslySetInnerHTML={{ __html: html }} className="shiki" />
-        ) : (
-          <code className="text-foreground-secondary">{code}</code>
-        )}
+      <pre className="p-4 overflow-x-auto text-sm m-0" style={{ background: result?.bg || "#0d1117" }}>
+        <code className="font-mono leading-relaxed">
+          {result ? (
+            result.tokens.map((line, i) => (
+              <span key={i}>
+                {line.map((token, j) => (
+                  <span key={j} style={{ color: token.color }}>
+                    {token.content}
+                  </span>
+                ))}
+                {i < result.tokens.length - 1 && "\n"}
+              </span>
+            ))
+          ) : (
+            code
+          )}
+        </code>
       </pre>
     </div>
   );
 }
+
+export const CodeBlock = memo(
+  CodeBlockInner,
+  (prev, next) => prev.code === next.code && prev.lang === next.lang
+);

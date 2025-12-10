@@ -1,6 +1,5 @@
 import { v } from "convex/values";
 import { mutation, query, action, internalMutation } from "./_generated/server";
-import { paginationOptsValidator } from "convex/server";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 
@@ -8,22 +7,7 @@ const openai = createOpenAI({
   apiKey: process.env.OPENAI_KEY || process.env.OPENAI_API_KEY,
 });
 
-// Get messages for a chat with pagination
-export const list = query({
-  args: {
-    chatId: v.id("chats"),
-    paginationOpts: paginationOptsValidator,
-  },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("messages")
-      .withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
-      .order("asc")
-      .paginate(args.paginationOpts);
-  },
-});
-
-// Get all messages for a chat (without pagination)
+// Get all messages for a chat
 export const getAll = query({
   args: { chatId: v.id("chats") },
   handler: async (ctx, args) => {
@@ -109,7 +93,7 @@ export const generateTitle = action({
   },
   handler: async (_ctx, args) => {
     const { text } = await generateText({
-      model: openai(args.model || "gpt-5.1-mini"),
+      model: openai(args.model || "gpt-5.1"),
       system: "Generate a very short title (3-6 words) for this chat based on the user's message. No quotes, no punctuation at the end.",
       prompt: args.message,
     });

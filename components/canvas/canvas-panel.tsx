@@ -67,6 +67,7 @@ interface CanvasPanelProps {
   onToggleResolve?: (commentId: Id<"canvasComments">) => Promise<void>;
   onSubmitForReview?: () => Promise<void>;
   onRequestAIReply?: (commentId: Id<"canvasComments">) => Promise<void>;
+  onAskAI?: (selectedText: string) => void;
 }
 
 export function CanvasPanel({
@@ -85,6 +86,7 @@ export function CanvasPanel({
   onToggleResolve,
   onSubmitForReview,
   onRequestAIReply,
+  onAskAI,
 }: CanvasPanelProps) {
   const [copied, setCopied] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -374,6 +376,7 @@ export function CanvasPanel({
                     resolved: c.resolved,
                   }))}
                   onAddComment={onAddInlineComment}
+                  onAskAI={onAskAI}
                   onCommentClick={(index) => {
                     const comment = inlineComments[index];
                     if (comment) setActiveCommentId(comment._id);

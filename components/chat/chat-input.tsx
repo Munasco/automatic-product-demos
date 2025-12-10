@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
-import { ModelType, AVAILABLE_MODELS } from "@/stores/atoms";
+import { ModelType, AVAILABLE_MODELS, ReasoningEffort } from "@/stores/atoms";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,6 +48,8 @@ interface ChatInputProps {
   onToggleComments?: () => void;
   canvasOpen?: boolean;
   commentsOpen?: boolean;
+  reasoningEffort?: ReasoningEffort;
+  onReasoningEffortChange?: (effort: ReasoningEffort) => void;
   files?: AttachedFile[];
   onFilesChange?: (files: AttachedFile[]) => void;
 }
@@ -65,6 +67,8 @@ export function ChatInput({
   onToggleComments,
   canvasOpen = false,
   commentsOpen = false,
+  reasoningEffort = "auto",
+  onReasoningEffortChange,
   files = [],
   onFilesChange,
 }: ChatInputProps) {
@@ -165,14 +169,14 @@ export function ChatInput({
           placeholder={placeholder}
           rows={1}
           className={cn(
-            "w-full resize-none bg-transparent px-4 pt-4 pb-12 text-base text-foreground placeholder:text-foreground-placeholder focus:outline-none",
+            "w-full resize-none bg-transparent px-4 pt-4 text-foreground placeholder:text-foreground-placeholder focus:outline-none",
             "min-h-[56px] max-h-[200px]",
             files.length > 0 && "pt-2"
           )}
         />
 
         {/* Bottom toolbar */}
-        <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-3 py-2 bg-background-secondary z-10">
+        <div className="flex items-center justify-between px-3 pb-2">
           {/* Left side tools */}
           <div className="flex items-center gap-1">
             <Tooltip>
@@ -266,6 +270,37 @@ export function ChatInput({
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {/* Reasoning Effort Selector - for gpt-5.1 */}
+            {selectedModel === "gpt-5.1" && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs text-foreground-muted hover:text-foreground gap-1"
+                  >
+                    <Brain className="size-3" />
+                    {reasoningEffort}
+                    <ChevronDown className="size-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-40">
+                  {(["auto", "deepthink"] as const).map((effort) => (
+                    <DropdownMenuItem
+                      key={effort}
+                      onClick={() => onReasoningEffortChange?.(effort)}
+                      className={cn(
+                        "capitalize",
+                        effort === reasoningEffort && "bg-background-hover"
+                      )}
+                    >
+                      {effort}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
 
           {/* Right side - Canvas/Comments/Send/Stop */}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight, Sparkles } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 interface ThinkingIndicatorProps {
@@ -27,22 +27,19 @@ export function ThinkingIndicator({
             content ? "text-foreground-secondary hover:text-foreground cursor-pointer" : "text-foreground-muted cursor-default"
           )}
         >
-          {content ? (
-            <ChevronRight
-              className={cn(
-                "size-4 transition-transform duration-200",
-                expanded && "rotate-90"
-              )}
-            />
-          ) : (
-            <Sparkles className={cn("size-4", isThinking && "animate-pulse")} />
-          )}
+          <ChevronRight
+            className={cn(
+              "size-4 transition-transform duration-200",
+              expanded && "rotate-90",
+              isThinking && !content && "animate-pulse"
+            )}
+          />
           <span className="font-medium">{title}</span>
           {isThinking && (
-            <span className="flex gap-1 ml-1">
+            <span className="flex gap-1 ml-1 items-center">
               <span className="w-1.5 h-1.5 rounded-full bg-foreground-muted animate-pulse" />
-              <span className="w-1.5 h-1.5 rounded-full bg-foreground-muted animate-pulse delay-75" />
-              <span className="w-1.5 h-1.5 rounded-full bg-foreground-muted animate-pulse delay-150" />
+              <span className="w-1.5 h-1.5 rounded-full bg-foreground-muted animate-pulse [animation-delay:200ms]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-foreground-muted animate-pulse [animation-delay:400ms]" />
             </span>
           )}
         </button>

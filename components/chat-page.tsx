@@ -4,13 +4,17 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Id } from "../convex/_generated/dataModel";
 import { ChatContainer } from "./chat/chat-container";
-import { Header } from "./chat/header";
-import { useChats } from "../hooks/use-chats";
+import { CanvasPanel } from "./canvas/canvas-panel";
+import { ThinkingSidebar, type ThinkingSession } from "./chat/thinking-sidebar";
+import { useChat, useChats } from "../hooks/use-chats";
 import { useStreamChat } from "../hooks/use-stream-chat";
+import { useCanvas } from "../hooks/use-canvas";
+import { useCanvasComments } from "../hooks/use-canvas-comments";
 import type { AttachedFile } from "./chat/chat-input";
 import { Button } from "./ui/button";
 import { useAtom } from "jotai";
-import { selectedModelAtom } from "../stores/atoms";
+import { selectedModelAtom, reasoningEffortAtom } from "../stores/atoms";
+import { cn } from "../lib/utils";
 import {
   PenSquare,
   MessageSquare,
@@ -40,7 +44,6 @@ import {
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
 } from "./ui/sidebar";
@@ -100,8 +103,25 @@ export function ChatPage() {
   const chatId = (params?.id as Id<"chats">) || null;
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedModel, setSelectedModel] = useAtom(selectedModelAtom);
+  const [reasoningEffort, setReasoningEffort] = useAtom(reasoningEffortAtom);
   const [files, setFiles] = useState<AttachedFile[]>([]);
   const [inputValue, setInputValue] = useState("");
+  const [canvasContent, setCanvasContent] = useState("");
+  const [canvasOpen, setCanvasOpen] = useState(false);
+  const [thinkingSidebarOpen, setThinkingSidebarOpen] = useState(false);
+  const [thinkingSessions, setThinkingSessions] = useState<ThinkingSession[]>(
+    []
+  );
+  const [thinkingTotalTime, setThinkingTotalTime] = useState(0);
+
+  // // Check if chat exists (only when chatId is provided)
+  // const { chat } = useChat(chatId);
+  // useEffect(() => {
+  //   // chat === null means not found (vs undefined which means loading)
+  //   if (chatId && chat === null) {
+  //     router.replace("/");
+  //   }
+  // }, [router, chatId, chat]);
 
   // Get chat list from Convex
   const {
@@ -140,15 +160,70 @@ export function ChatPage() {
   // Use stream chat hook for messaging
   const {
     messages,
+    streamUrl,
     sendMessage,
     createChatAndSend,
     stop,
-    isLoading,
-    isLoadingMessages,
+    isStreaming,
+    isLoadingHistory,
   } = useStreamChat({
     chatId,
     model: selectedModel,
+    reasoningEffort: selectedModel === "gpt-5.1" ? reasoningEffort : undefined,
   });
+
+  // Canvas hooks
+  const {
+    document: canvasDocument,
+    createOrUpdate: createOrUpdateCanvas,
+    updateContent: updateCanvasContent,
+  } = useCanvas(chatId);
+  const {
+    comments: canvasComments,
+    addInlineComment,
+    addGeneralComment,
+    replyToComment,
+    toggleResolve,
+    submitForReview,
+    requestAIReply,
+  } = useCanvasComments(canvasDocument?._id ?? null, canvasContent);
+
+  // Reset canvas content when document changes using key-based approach
+  // This avoids useEffect and setState issues
+  const canvasKey = canvasDocument?._id || "new";
+  const currentCanvasContent = canvasDocument?.content || "";
+  const displayCanvasContent = canvasDocument
+    ? currentCanvasContent
+    : canvasContent;
+
+  // Handle canvas content change
+  const handleCanvasContentChange = useCallback(
+    async (content: string) => {
+      setCanvasContent(content);
+      if (canvasDocument) {
+        await updateCanvasContent(content);
+      } else if (chatId) {
+        await createOrUpdateCanvas("Untitled", content, "text");
+      }
+    },
+    [canvasDocument, chatId, updateCanvasContent, createOrUpdateCanvas]
+  );
+
+  // Handle Ask AI from canvas selection
+  const handleAskAI = useCallback((selectedText: string) => {
+    const prompt = `Regarding the following text from the canvas:\n\n"${selectedText}"\n\nPlease provide a detailed explanation. If this requires a lengthy response, please indicate that upfront.`;
+    setInputValue(prompt);
+  }, []);
+
+  // Handle opening thinking sidebar
+  const handleOpenThinkingSidebar = useCallback(
+    (sessions: ThinkingSession[], totalTime: number) => {
+      setThinkingSessions(sessions);
+      setThinkingTotalTime(totalTime);
+      setThinkingSidebarOpen(true);
+    },
+    []
+  );
 
   // Navigate helper
   const navigate = useCallback(
@@ -188,7 +263,7 @@ export function ChatPage() {
 
   // Handle submit
   const handleSubmit = useCallback(async () => {
-    if (!inputValue.trim() || isLoading) return;
+    if (!inputValue.trim() || isStreaming) return;
 
     const userMessage = inputValue.trim();
     setInputValue("");
@@ -199,7 +274,14 @@ export function ChatPage() {
     } else {
       await sendMessage(userMessage);
     }
-  }, [inputValue, isLoading, chatId, createChatAndSend, sendMessage, navigate]);
+  }, [
+    inputValue,
+    isStreaming,
+    chatId,
+    createChatAndSend,
+    sendMessage,
+    navigate,
+  ]);
 
   return (
     <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
@@ -233,25 +315,33 @@ export function ChatPage() {
                   <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
                   <SidebarMenu>
                     {group.chats.map((chat) => (
-                      <SidebarMenuItem key={chat._id}>
-                        <SidebarMenuButton
-                          isActive={chatId === chat._id}
-                          onClick={() =>
-                            handleSelectChat(chat._id as Id<"chats">)
-                          }
-                          className="group"
-                        >
-                          <MessageSquare className="size-4 shrink-0" />
-                          <span className="flex-1 truncate text-start">
-                            {chat.title}
-                          </span>
+                      <SidebarMenuItem
+                        key={chat._id}
+                        className={cn(
+                          "rounded-lg flex group w-full transition-colors",
+                          chatId === chat._id
+                            ? "bg-background-hover text-foreground"
+                            : "hover:bg-background-hover"
+                        )}
+                      >
+                        <div className="flex w-full items-center justify-between pr-2">
+                          <Button
+                            variant="ghost"
+                            className="max-w-11/12 px-2 py-3 text-sm transition-colors justify-start hover:bg-transparent"
+                            onClick={() =>
+                              handleSelectChat(chat._id as Id<"chats">)
+                            }
+                          >
+                            <span className="flex-1 truncate text-start overflow-hidden text-ellipsis whitespace-nowrap">
+                              {chat.title}
+                            </span>
+                          </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="size-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                                onClick={(e) => e.stopPropagation()}
+                                className="size-6 opacity-0 group-hover:opacity-100 hover:bg-transparent transition-opacity"
                               >
                                 <MoreHorizontal className="size-4" />
                               </Button>
@@ -302,7 +392,7 @@ export function ChatPage() {
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
-                        </SidebarMenuButton>
+                        </div>
                       </SidebarMenuItem>
                     ))}
                   </SidebarMenu>
@@ -323,26 +413,53 @@ export function ChatPage() {
         </SidebarContent>
       </Sidebar>
 
-      <SidebarInset className="flex flex-col h-screen">
-        <Header
-          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          modelName={selectedModel}
+      <SidebarInset className="flex flex-row h-screen">
+        <div className="flex flex-col flex-1 min-w-0">
+          <ChatContainer
+            messages={messages}
+            streamUrl={streamUrl}
+            input={inputValue}
+            onInputChange={setInputValue}
+            onSubmit={handleSubmit}
+            onStop={stop}
+            isStreaming={isStreaming}
+            isLoadingHistory={isLoadingHistory}
+            selectedModel={selectedModel}
+            onModelChange={(modelId) =>
+              setSelectedModel(modelId as typeof selectedModel)
+            }
+            reasoningEffort={reasoningEffort}
+            onReasoningEffortChange={setReasoningEffort}
+            files={files}
+            onFilesChange={setFiles}
+            onToggleCanvas={() => setCanvasOpen(!canvasOpen)}
+            canvasOpen={canvasOpen}
+            onOpenThinkingSidebar={handleOpenThinkingSidebar}
+          />
+        </div>
+        <CanvasPanel
+          key={canvasKey}
+          isOpen={canvasOpen}
+          onClose={() => setCanvasOpen(false)}
+          content={displayCanvasContent}
+          onContentChange={handleCanvasContentChange}
+          title={canvasDocument?.title || "Untitled"}
+          language={canvasDocument?.language || "text"}
+          canvasDocumentId={canvasDocument?._id}
+          comments={canvasComments}
+          onAddInlineComment={addInlineComment}
+          onAddGeneralComment={addGeneralComment}
+          onReplyToComment={replyToComment}
+          onToggleResolve={toggleResolve}
+          onSubmitForReview={submitForReview}
+          onRequestAIReply={requestAIReply}
+          onAskAI={handleAskAI}
         />
-
-        <ChatContainer
-          messages={messages}
-          input={inputValue}
-          onInputChange={setInputValue}
-          onSubmit={handleSubmit}
-          onStop={stop}
-          isLoading={isLoading}
-          isLoadingMessages={isLoadingMessages}
-          selectedModel={selectedModel}
-          onModelChange={(modelId) =>
-            setSelectedModel(modelId as typeof selectedModel)
-          }
-          files={files}
-          onFilesChange={setFiles}
+        <ThinkingSidebar
+          sessions={thinkingSessions}
+          totalTime={thinkingTotalTime}
+          isOpen={thinkingSidebarOpen}
+          onClose={() => setThinkingSidebarOpen(false)}
         />
       </SidebarInset>
     </SidebarProvider>

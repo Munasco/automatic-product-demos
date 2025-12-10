@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { TooltipProvider } from "../components/ui/tooltip";
 import { ConvexClientProvider } from "../lib/convex";
+import { Providers } from "../components/providers";
 import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
@@ -17,21 +18,26 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
-        <ConvexClientProvider>
-          <TooltipProvider delayDuration={0}>
-            {children}
-            <Toaster
+        <Providers>
+          <ConvexClientProvider>
+            <TooltipProvider delayDuration={0}>
+              {children}
+              <Toaster
               position="top-right"
               toastOptions={{
                 style: {
-                  background: "var(--background-secondary)",
-                  border: "1px solid var(--border)",
-                  color: "var(--foreground)",
+                  background: "#ffffff",
+                  border: "1px solid #e5e5e5",
+                  color: "#171717",
+                },
+                classNames: {
+                  error: "!bg-red-50 !border-red-200 !text-red-900",
                 },
               }}
-            />
-          </TooltipProvider>
-        </ConvexClientProvider>
+              />
+            </TooltipProvider>
+          </ConvexClientProvider>
+        </Providers>
       </body>
     </html>
   );

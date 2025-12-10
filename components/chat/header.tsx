@@ -10,6 +10,7 @@ import {
   Columns,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { CodeThemeSelector } from "../code-theme-selector";
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -112,6 +113,9 @@ export function Header({
             <TooltipContent side="bottom">Toggle comments</TooltipContent>
           </Tooltip>
         )}
+
+        {/* Code Theme Selector */}
+        <CodeThemeSelector />
 
         <Tooltip>
           <TooltipTrigger asChild>

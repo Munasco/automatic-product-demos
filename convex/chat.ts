@@ -9,7 +9,6 @@ const openai = createOpenAI({
   apiKey: process.env.OPENAI_KEY || process.env.OPENAI_API_KEY,
 });
 
-// Initialize the persistent text streaming component
 const persistentTextStreaming = new PersistentTextStreaming(
   components.persistentTextStreaming
 );
@@ -19,32 +18,27 @@ export const createStream = mutation({
   args: {
     chatId: v.id("chats"),
     model: v.optional(v.string()),
-    sessionId: v.string(),
+    reasoningEffort: v.optional(v.union(v.literal("auto"), v.literal("deepthink"))),
   },
   handler: async (ctx, args) => {
-    // Create a stream using the component
     const streamId = await persistentTextStreaming.createStream(ctx);
 
-    // Create the assistant message with empty content (will be filled by stream)
     const messageId = await ctx.db.insert("messages", {
       chatId: args.chatId,
       role: "assistant",
-      content: "", // Will be updated as stream progresses
+      content: "",
       createdAt: Date.now(),
       streamId,
     });
 
-    // Store the stream metadata for lookup by HTTP action
     await ctx.db.insert("streamMetadata", {
       streamId,
       chatId: args.chatId,
       messageId,
-      model: args.model || "gpt-5.1-mini",
-      sessionId: args.sessionId,
-      createdAt: Date.now(),
+      model: args.model || "gpt-5.1",
+      reasoningEffort: args.reasoningEffort,
     });
 
-    // Update chat's updatedAt
     await ctx.db.patch(args.chatId, {
       updatedAt: Date.now(),
     });
@@ -53,25 +47,9 @@ export const createStream = mutation({
   },
 });
 
-// Query to get sessionId for a stream (to check if current session initiated it)
-export const getStreamSessionId = query({
-  args: {
-    streamId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const metadata = await ctx.db
-      .query("streamMetadata")
-      .withIndex("by_stream", (q) => q.eq("streamId", args.streamId))
-      .first();
-    return metadata?.sessionId || null;
-  },
-});
-
 // Internal query to get stream metadata
 export const getStreamMetadata = internalQuery({
-  args: {
-    streamId: v.string(),
-  },
+  args: { streamId: v.string() },
   handler: async (ctx, args) => {
     return await ctx.db
       .query("streamMetadata")
@@ -82,9 +60,7 @@ export const getStreamMetadata = internalQuery({
 
 // Internal query to get messages for a chat
 export const getChatMessages = internalQuery({
-  args: {
-    chatId: v.id("chats"),
-  },
+  args: { chatId: v.id("chats") },
   handler: async (ctx, args) => {
     return await ctx.db
       .query("messages")
@@ -96,41 +72,9 @@ export const getChatMessages = internalQuery({
 
 // Get stream body for a single stream
 export const getStreamBody = query({
-  args: {
-    streamId: v.string(),
-  },
+  args: { streamId: v.string() },
   handler: async (ctx, args) => {
     return await persistentTextStreaming.getStreamBody(ctx, args.streamId as StreamId);
-  },
-});
-
-// Get all active stream bodies for a chat (for non-driver viewers)
-export const getActiveStreamBodies = query({
-  args: {
-    chatId: v.id("chats"),
-  },
-  handler: async (ctx, args) => {
-    // Get all messages with streamIds that have empty content (still streaming)
-    const messages = await ctx.db
-      .query("messages")
-      .withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
-      .collect();
-
-    const streamBodies: Record<string, { text: string; status: string }> = {};
-
-    for (const msg of messages) {
-      // Only get stream body for messages that are still streaming (empty content)
-      if (msg.streamId && !msg.content) {
-        try {
-          const body = await persistentTextStreaming.getStreamBody(ctx, msg.streamId as StreamId);
-          streamBodies[msg._id] = body;
-        } catch {
-          // Stream might not exist anymore
-        }
-      }
-    }
-
-    return streamBodies;
   },
 });
 
@@ -141,15 +85,56 @@ export const updateMessageContent = internalMutation({
     content: v.string(),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.messageId, {
-      content: args.content,
+    await ctx.db.patch(args.messageId, { content: args.content });
+  },
+});
+
+// Internal mutation to delete stream metadata after completion
+export const deleteStreamMetadata = internalMutation({
+  args: { streamId: v.string() },
+  handler: async (ctx, args) => {
+    const metadata = await ctx.db
+      .query("streamMetadata")
+      .withIndex("by_stream", (q) => q.eq("streamId", args.streamId))
+      .first();
+    if (metadata) {
+      await ctx.db.delete(metadata._id);
+    }
+  },
+});
+
+// Cancel/stop an active stream
+export const cancelStream = mutation({
+  args: { chatId: v.id("chats") },
+  handler: async (ctx, args) => {
+    // Find active stream metadata for this chat
+    const metadata = await ctx.db
+      .query("streamMetadata")
+      .withIndex("by_chat_id", (q) => q.eq("chatId", args.chatId))
+      .first();
+
+    if (!metadata) {
+      return { cancelled: false, reason: "No active stream" };
+    }
+
+    // Get current stream content
+    const streamBody = await persistentTextStreaming.getStreamBody(ctx, metadata.streamId as StreamId);
+    const currentText = streamBody.text || "";
+
+    // Update message with current content (even if partial)
+    await ctx.db.patch(metadata.messageId, {
+      content: currentText + "\n\n*[Generation stopped]*",
     });
+
+    // Delete stream metadata
+    await ctx.db.delete(metadata._id);
+
+    return { cancelled: true, streamId: metadata.streamId };
   },
 });
 
 // HTTP action for streaming chat responses
 export const streamChat = httpAction(async (ctx, request) => {
-  // Handle CORS preflight
   if (request.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
@@ -162,7 +147,6 @@ export const streamChat = httpAction(async (ctx, request) => {
   }
 
   try {
-    // The useStream hook sends { streamId } in the body
     const body = await request.json();
     const streamId: string = body.streamId;
 
@@ -179,8 +163,8 @@ export const streamChat = httpAction(async (ctx, request) => {
       );
     }
 
-    // Look up stream metadata to get chat context
     const metadata = await ctx.runQuery(internal.chat.getStreamMetadata, { streamId });
+
     if (!metadata) {
       return new Response(
         JSON.stringify({ error: "Stream metadata not found" }),
@@ -194,12 +178,10 @@ export const streamChat = httpAction(async (ctx, request) => {
       );
     }
 
-    // Get chat messages from database
     const dbMessages = await ctx.runQuery(internal.chat.getChatMessages, { chatId: metadata.chatId });
 
-    // Convert to UIMessage format (exclude the empty assistant message we just created)
     const messages: UIMessage[] = dbMessages
-      .filter(m => m._id !== metadata.messageId) // Exclude the placeholder assistant message
+      .filter(m => m._id !== metadata.messageId)
       .map(m => ({
         id: m._id,
         role: m.role as "user" | "assistant",
@@ -207,8 +189,10 @@ export const streamChat = httpAction(async (ctx, request) => {
       }));
 
     const model = metadata.model;
+    // Only set reasoningEffort for "deepthink" - "auto" means don't set it
+    const isDeepthink = metadata.reasoningEffort === "deepthink";
+    const reasoningEffort = isDeepthink ? "high" : undefined;
 
-    // Generator function for AI text
     const generateAIResponse = async (
       _ctx: typeof ctx,
       _request: typeof request,
@@ -216,35 +200,82 @@ export const streamChat = httpAction(async (ctx, request) => {
       chunkAppender: (text: string) => Promise<void>
     ) => {
       let fullText = "";
+      let reasoningText = "";
+      let hasStartedText = false;
 
       try {
         const result = streamText({
           model: openai(model),
           system: `You are a helpful AI assistant. Be concise and helpful. Use markdown formatting when appropriate.`,
           messages: convertToModelMessages(messages),
+          providerOptions: {
+            openai: {
+              ...(reasoningEffort && { reasoningEffort }),
+              ...(isDeepthink && { reasoningSummary: "detailed" }),
+            },
+          },
         });
 
-        // Stream the response
-        for await (const chunk of result.textStream) {
-          fullText += chunk;
-          await chunkAppender(chunk);
+        let reasoningStartTime = 0;
+        let thinkingSessionCount = 0;
+        let totalThinkingTime = 0;
+        const thinkingSessions: { id: number; duration: number; content: string }[] = [];
+        let currentSessionContent = "";
+
+        for await (const part of result.fullStream) {
+          if (part.type === "reasoning-start") {
+            // Start new thinking session
+            reasoningStartTime = Date.now();
+            thinkingSessionCount++;
+            currentSessionContent = "";
+            // Output marker for thinking session start
+            const marker = `<!--THINKING_START:${thinkingSessionCount}:${reasoningStartTime}-->`;
+            fullText += marker;
+            await chunkAppender(marker);
+          } else if (part.type === "reasoning-delta") {
+            // Stream reasoning tokens
+            const delta = (part as { delta?: string; text?: string }).delta ?? (part as { delta?: string; text?: string }).text ?? "";
+            reasoningText += delta;
+            currentSessionContent += delta;
+            fullText += delta;
+            await chunkAppender(delta);
+          } else if (part.type === "reasoning-end") {
+            // End thinking session with duration
+            const duration = Math.round((Date.now() - reasoningStartTime) / 1000);
+            totalThinkingTime += duration;
+            thinkingSessions.push({
+              id: thinkingSessionCount,
+              duration,
+              content: currentSessionContent,
+            });
+            // Output marker for thinking session end
+            const marker = `<!--THINKING_END:${thinkingSessionCount}:${duration}:${totalThinkingTime}-->`;
+            fullText += marker;
+            await chunkAppender(marker);
+          } else if (part.type === "text-delta") {
+            hasStartedText = true;
+            fullText += part.text;
+            await chunkAppender(part.text);
+          }
         }
       } catch (error) {
-        console.error("AI generation failed:", error);
+        console.error("[streamChat] AI generation failed:", error);
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
         const errorText = `[Error: ${errorMessage}]`;
         fullText = fullText || errorText;
         await chunkAppender(errorText);
       }
 
-      // Update the message in database with final content
       await ctx.runMutation(internal.chat.updateMessageContent, {
         messageId: metadata.messageId,
         content: fullText,
       });
+
+      await ctx.runMutation(internal.chat.deleteStreamMetadata, {
+        streamId: _streamId,
+      });
     };
 
-    // Use the component's stream method
     const response = await persistentTextStreaming.stream(
       ctx,
       request,
@@ -252,7 +283,6 @@ export const streamChat = httpAction(async (ctx, request) => {
       generateAIResponse
     );
 
-    // Set CORS headers
     response.headers.set("Access-Control-Allow-Origin", "*");
     response.headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
     response.headers.set("Access-Control-Allow-Headers", "Content-Type");
@@ -260,7 +290,7 @@ export const streamChat = httpAction(async (ctx, request) => {
 
     return response;
   } catch (error) {
-    console.error("Stream chat error:", error);
+    console.error("[streamChat] Error:", error);
     return new Response(
       JSON.stringify({ error: "Failed to stream chat response" }),
       {

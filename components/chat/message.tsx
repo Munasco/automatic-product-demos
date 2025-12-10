@@ -15,29 +15,34 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { MarkdownRenderer } from "./markdown-renderer";
+import { StreamingMessage } from "./streaming-message";
+import type { ThinkingSession } from "./thinking-sidebar";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  streamId?: string;
 }
 
 interface ChatMessageProps {
   message: Message;
-  isStreaming?: boolean;
+  streamUrl?: URL | null;
   onFork?: () => void;
   onRegenerate?: () => void;
   showActions?: boolean;
   commentCount?: number;
+  onOpenThinkingSidebar?: (sessions: ThinkingSession[], totalTime: number) => void;
 }
 
 export function ChatMessage({
   message,
-  isStreaming = false,
+  streamUrl,
   onFork,
   onRegenerate,
   showActions = true,
   commentCount = 0,
+  onOpenThinkingSidebar,
 }: ChatMessageProps) {
   const [copied, setCopied] = useState(false);
 
@@ -48,6 +53,8 @@ export function ChatMessage({
   };
 
   const isUser = message.role === "user";
+  // Message is streaming if it has a streamId but no content yet
+  const isStreaming = !isUser && !!message.streamId && !message.content;
 
   return (
     <div className={cn("group py-4", isUser ? "flex justify-end" : "")}>
@@ -66,7 +73,16 @@ export function ChatMessage({
               isUser && "text-[15px]"
             )}
           >
-            <MarkdownRenderer content={message.content} />
+            {/* Use StreamingMessage for messages with streamId and no content */}
+            {isStreaming && streamUrl ? (
+              <StreamingMessage
+                streamId={message.streamId!}
+                streamUrl={streamUrl}
+                onOpenThinkingSidebar={onOpenThinkingSidebar}
+              />
+            ) : (
+              <MarkdownRenderer content={message.content} />
+            )}
           </div>
         </div>
 

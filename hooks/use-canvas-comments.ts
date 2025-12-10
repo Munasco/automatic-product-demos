@@ -2,7 +2,7 @@ import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 
-export function useCanvasComments(canvasDocumentId: Id<"canvasDocuments"> | null) {
+export function useCanvasComments(canvasDocumentId: Id<"canvasDocuments"> | null, canvasContent?: string) {
   const comments = useQuery(
     api.canvasComments.listByCanvas,
     canvasDocumentId ? { canvasDocumentId } : "skip"
@@ -64,7 +64,7 @@ export function useCanvasComments(canvasDocumentId: Id<"canvasDocuments"> | null
         commentId,
         commentContent: comment.content,
         selectedText: comment.selectedText,
-        canvasContent: "", // Will be passed from parent
+        canvasContent: canvasContent || "",
       });
     },
   };

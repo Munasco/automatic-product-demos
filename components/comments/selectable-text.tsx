@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Textarea } from "../ui/textarea";
-import { MessageSquarePlus } from "lucide-react";
+import { MessageSquarePlus, Sparkles } from "lucide-react";
 
 interface Selection {
   start: number;
@@ -29,6 +29,7 @@ interface SelectableTextProps {
     text: string,
     comment: string
   ) => Promise<void>;
+  onAskAI?: (selectedText: string) => void;
   onCommentClick?: (index: number) => void;
   activeCommentIndex?: number;
 }
@@ -37,6 +38,7 @@ export function SelectableText({
   content,
   comments,
   onAddComment,
+  onAskAI,
   onCommentClick,
   activeCommentIndex,
 }: SelectableTextProps) {
@@ -113,6 +115,12 @@ export function SelectableText({
     window.getSelection()?.removeAllRanges();
   };
 
+  const handleAskAI = () => {
+    if (!selection || !onAskAI) return;
+    onAskAI(selection.text);
+    cancelSelection();
+  };
+
   // Render content with highlighted comments
   const renderHighlightedContent = () => {
     if (comments.length === 0) {
@@ -171,20 +179,31 @@ export function SelectableText({
       {/* Selection popup */}
       {selection && !showCommentInput && (
         <div
-          className="absolute z-50"
+          className="absolute z-50 flex gap-1"
           style={{
-            left: selection.rect.left + selection.rect.width / 2 - 20,
-            top: selection.rect.top - 40,
+            left: selection.rect.left + selection.rect.width / 2 - 80,
+            top: selection.rect.top - 44,
           }}
         >
           <Button
             size="sm"
+            variant="secondary"
             className="shadow-lg"
             onClick={() => setShowCommentInput(true)}
           >
             <MessageSquarePlus className="size-4 mr-1" />
             Comment
           </Button>
+          {onAskAI && (
+            <Button
+              size="sm"
+              className="shadow-lg"
+              onClick={handleAskAI}
+            >
+              <Sparkles className="size-4 mr-1" />
+              Ask AI
+            </Button>
+          )}
         </div>
       )}
 

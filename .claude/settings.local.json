@@ -16,7 +16,10 @@
       "Bash(git show:*)",
       "Bash(grep:*)",
       "WebFetch(domain:ai-sdk.dev)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(npx tsx:*)",
+      "Bash(source:*)",
+      "WebFetch(domain:shiki.style)"
     ],
     "deny": [],
     "ask": []

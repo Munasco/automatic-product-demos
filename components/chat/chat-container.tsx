@@ -7,52 +7,64 @@ import { ThinkingIndicator } from "./thinking-indicator";
 import { Button } from "../ui/button";
 import { ArrowDown } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { type ModelType } from "@/stores/atoms";
+import { type ModelType, type ReasoningEffort } from "@/stores/atoms";
+import { Header } from "./header";
+import { useSidebar } from "@/components/ui/sidebar";
+import type { ThinkingSession } from "./thinking-sidebar";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  streamId?: string;
 }
 
 interface ChatContainerProps {
   messages: Message[];
+  streamUrl: URL | null;
   input: string;
   onInputChange: (value: string) => void;
   onSubmit: () => void;
   onStop?: () => void;
   onFork?: (messageIndex: number) => void;
   onRegenerate?: (messageIndex: number) => void;
-  isLoading?: boolean;
-  isLoadingMessages?: boolean;
+  isStreaming?: boolean;
+  isLoadingHistory?: boolean;
   onToggleCanvas?: () => void;
   onToggleComments?: () => void;
   canvasOpen?: boolean;
   commentsOpen?: boolean;
   selectedModel?: ModelType;
   onModelChange?: (modelId: ModelType) => void;
+  reasoningEffort?: ReasoningEffort;
+  onReasoningEffortChange?: (effort: ReasoningEffort) => void;
   files?: AttachedFile[];
   onFilesChange?: (files: AttachedFile[]) => void;
+  onOpenThinkingSidebar?: (sessions: ThinkingSession[], totalTime: number) => void;
 }
 
 export function ChatContainer({
   messages,
+  streamUrl,
   input,
   onInputChange,
   onSubmit,
   onStop,
   onFork,
   onRegenerate,
-  isLoading = false,
-  isLoadingMessages = false,
+  isStreaming = false,
+  isLoadingHistory = false,
   onToggleCanvas,
   onToggleComments,
   canvasOpen,
   commentsOpen,
   selectedModel,
   onModelChange,
+  reasoningEffort,
+  onReasoningEffortChange,
   files,
   onFilesChange,
+  onOpenThinkingSidebar,
 }: ChatContainerProps) {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const scrollBottomRef = useRef<HTMLDivElement>(null);
@@ -68,13 +80,18 @@ export function ChatContainer({
     setShowScrollButton(!isAtBottom);
   }, []);
 
-  const isEmpty = messages.length === 0 && !isLoadingMessages;
+  const isEmpty = messages.length === 0 && !isLoadingHistory;
+  const { setOpen: setSidebarOpen, open: sidebarOpen } = useSidebar();
 
   return (
     <div className="flex flex-col h-full w-full flex-1">
+      <Header
+        onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+        modelName={selectedModel}
+      />
       {/* Messages area */}
       <div className="flex-1 overflow-hidden relative">
-        {isLoadingMessages ? (
+        {isLoadingHistory ? (
           <LoadingState />
         ) : isEmpty ? (
           <NoMessagesSent />
@@ -85,17 +102,14 @@ export function ChatContainer({
                 <ChatMessage
                   key={message.id}
                   message={message}
-                  isStreaming={
-                    isLoading &&
-                    index === messages.length - 1 &&
-                    message.role === "assistant"
-                  }
+                  streamUrl={streamUrl}
                   onFork={() => onFork?.(index)}
                   onRegenerate={() => onRegenerate?.(index)}
+                  onOpenThinkingSidebar={onOpenThinkingSidebar}
                 />
               ))}
-              {/* Show thinking indicator when loading and no assistant message yet */}
-              {isLoading &&
+              {/* Show thinking indicator when loading with no assistant response yet */}
+              {isStreaming &&
                 (messages.length === 0 ||
                   messages[messages.length - 1]?.role === "user") && (
                   <ThinkingIndicator title="Thinking" isThinking={true} />
@@ -124,13 +138,15 @@ export function ChatContainer({
         onChange={onInputChange}
         onSubmit={onSubmit}
         onStop={onStop}
-        isLoading={isLoading}
+        isLoading={isStreaming}
         onToggleCanvas={onToggleCanvas}
         onToggleComments={onToggleComments}
         canvasOpen={canvasOpen}
         commentsOpen={commentsOpen}
         selectedModel={selectedModel}
         onModelChange={onModelChange}
+        reasoningEffort={reasoningEffort}
+        onReasoningEffortChange={onReasoningEffortChange}
         files={files}
         onFilesChange={onFilesChange}
       />

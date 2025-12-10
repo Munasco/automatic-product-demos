@@ -24,7 +24,7 @@ const generateTitle = httpAction(async (_ctx, request) => {
 
   const { message }: { message: string } = await request.json();
   const result = await streamText({
-    model: openai("gpt-5.1-mini"),
+    model: openai("gpt-5.1"),
     system: "Generate a very short title (3-6 words) for this chat. No quotes or punctuation.",
     prompt: message,
   });

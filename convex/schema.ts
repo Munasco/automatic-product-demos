@@ -30,9 +30,9 @@ export default defineSchema({
     chatId: v.id("chats"),
     messageId: v.id("messages"),
     model: v.string(),
-    sessionId: v.optional(v.string()), // Browser session that created this stream
-    createdAt: v.number(),
-  }).index("by_stream", ["streamId"]),
+    reasoningEffort: v.optional(v.union(v.literal("auto"), v.literal("deepthink"))),
+  }).index("by_stream", ["streamId"])
+    .index("by_chat_id", ["chatId"]),
 
   // Comments on message selections (Google Docs style)
   comments: defineTable({

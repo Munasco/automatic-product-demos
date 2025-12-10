@@ -1,14 +1,15 @@
 import { atom } from "jotai";
+import { atomWithStorage, createJSONStorage } from "jotai/utils";
+import { nanoid } from "nanoid";
 
-// create a list of possible models to select only gpt-5.1 variants
 export const MODELS_AVAILABLE = [
     "gpt-5.1",
-    "gpt-5.1-thinking",
-    "gpt-5.1-mini",
-    "gpt-5.1-thinking-mini"
+    "gpt-5.1-codex-mini"
 ] as const;
 
 export type ModelType = typeof MODELS_AVAILABLE[number];
+
+export type ReasoningEffort = "auto" | "deepthink";
 
 export interface ModelOption {
     id: ModelType;
@@ -25,23 +26,21 @@ export const AVAILABLE_MODELS: ModelOption[] = [
         icon: "zap",
     },
     {
-        id: "gpt-5.1-mini",
-        name: "GPT-5.1 mini",
-        description: "Faster, lighter tasks",
+        id: "gpt-5.1-codex-mini",
+        name: "GPT-5.1 Codex mini",
+        description: "Fast coding assistant",
         icon: "cpu",
-    },
-    {
-        id: "gpt-5.1-thinking",
-        name: "GPT-5.1 Thinking",
-        description: "Uses advanced reasoning",
-        icon: "brain",
-    },
-    {
-        id: "gpt-5.1-thinking-mini",
-        name: "GPT-5.1 Thinking mini",
-        description: "Faster reasoning",
-        icon: "brain",
     },
 ];
 
+export const sessionIdAtom = atomWithStorage<string>(
+    "chat-session-id",
+    nanoid(),
+    typeof window === "undefined"
+        ? undefined
+        : createJSONStorage(() => sessionStorage),
+    { getOnInit: true }
+);
+
 export const selectedModelAtom = atom<ModelType>("gpt-5.1");
+export const reasoningEffortAtom = atom<ReasoningEffort>("auto");
