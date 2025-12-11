@@ -22,6 +22,7 @@ export default defineSchema({
       type: v.string(),
       url: v.string(),
     }))),
+    editVersion: v.optional(v.number()), // Track edit count (e.g., 3/3 means 3rd edit)
   }).index("by_chat", ["chatId", "createdAt"]),
 
   // Stream metadata for looking up chat context from HTTP actions
@@ -31,6 +32,7 @@ export default defineSchema({
     messageId: v.id("messages"),
     model: v.string(),
     reasoningEffort: v.optional(v.union(v.literal("auto"), v.literal("deepthink"))),
+    webSearch: v.optional(v.boolean()),
   }).index("by_stream", ["streamId"])
     .index("by_chat_id", ["chatId"]),
 

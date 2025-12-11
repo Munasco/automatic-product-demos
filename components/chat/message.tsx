@@ -4,6 +4,7 @@ import { useState } from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { Textarea } from "../ui/textarea";
 import {
   Copy,
   Volume2,
@@ -13,6 +14,8 @@ import {
   GitFork,
   Check,
   MessageSquare,
+  Pencil,
+  X,
 } from "lucide-react";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { StreamingMessage } from "./streaming-message";
@@ -23,6 +26,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   streamId?: string;
+  editVersion?: number;
 }
 
 interface ChatMessageProps {
@@ -30,9 +34,15 @@ interface ChatMessageProps {
   streamUrl?: URL | null;
   onFork?: () => void;
   onRegenerate?: () => void;
+  onEdit?: (content: string) => void;
+  onComment?: (selectedText: string) => void;
+  onAskAI?: (selectedText: string) => void;
   showActions?: boolean;
   commentCount?: number;
-  onOpenThinkingSidebar?: (sessions: ThinkingSession[], totalTime: number) => void;
+  onOpenThinkingSidebar?: (
+    sessions: ThinkingSession[],
+    totalTime: number
+  ) => void;
 }
 
 export function ChatMessage({
@@ -40,11 +50,16 @@ export function ChatMessage({
   streamUrl,
   onFork,
   onRegenerate,
+  onEdit,
+  onComment,
+  onAskAI,
   showActions = true,
   commentCount = 0,
   onOpenThinkingSidebar,
 }: ChatMessageProps) {
   const [copied, setCopied] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(message.content);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(message.content);
@@ -52,13 +67,41 @@ export function ChatMessage({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleEdit = () => {
+    setEditContent(message.content);
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditContent(message.content);
+  };
+
+  const handleSaveEdit = () => {
+    if (editContent.trim() && editContent !== message.content) {
+      onEdit?.(editContent);
+    }
+    setIsEditing(false);
+  };
+
   const isUser = message.role === "user";
   // Message is streaming if it has a streamId but no content yet
   const isStreaming = !isUser && !!message.streamId && !message.content;
 
   return (
-    <div className={cn("group py-4", isUser ? "flex justify-end" : "")}>
+    <div
+      data-message-id={message.id}
+      className={cn("group py-4", isUser ? "flex justify-end" : "")}
+    >
       <div className={cn(isUser ? "max-w-[70%] ml-auto" : "")}>
+        {/* Edit version indicator for user messages */}
+        {isUser && message.editVersion && (
+          <div className="flex justify-end mb-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="text-xs text-foreground-muted bg-background-secondary px-1.5 py-0.5 rounded">
+              {message.editVersion}/{message.editVersion}
+            </span>
+          </div>
+        )}
         {/* Message Content */}
         <div
           className={cn(
@@ -73,22 +116,60 @@ export function ChatMessage({
               isUser && "text-[15px]"
             )}
           >
-            {/* Use StreamingMessage for messages with streamId and no content */}
-            {isStreaming && streamUrl ? (
+            {/* Use StreamingMessage for streaming OR completed messages (handles thinking) */}
+            {!isUser ? (
               <StreamingMessage
-                streamId={message.streamId!}
-                streamUrl={streamUrl}
+                streamId={message.streamId}
+                streamUrl={streamUrl ?? undefined}
+                initialContent={message.content}
+                isStreaming={isStreaming}
                 onOpenThinkingSidebar={onOpenThinkingSidebar}
               />
+            ) : isEditing ? (
+              <div className="flex flex-col gap-2">
+                <textarea
+                  placeholder="add edited message"
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  className="ring-0 min-h-[80px] bg-transparent border-none outline-none resize-none w-4xl"
+                  autoFocus
+                />
+                <div className="flex gap-2 justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleCancelEdit}
+                    className="h-7 px-2 text-foreground-muted"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleSaveEdit}
+                    className="h-7 px-3"
+                  >
+                    Send
+                  </Button>
+                </div>
+              </div>
             ) : (
-              <MarkdownRenderer content={message.content} />
+              <MarkdownRenderer
+                content={message.content}
+                onComment={onComment}
+                onAskAI={onAskAI}
+              />
             )}
           </div>
         </div>
 
         {/* Action Buttons */}
         {showActions && !isStreaming && message.content && (
-          <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div
+            className={cn(
+              "flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity",
+              isUser && "justify-end"
+            )}
+          >
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -106,6 +187,22 @@ export function ChatMessage({
               </TooltipTrigger>
               <TooltipContent>Copy</TooltipContent>
             </Tooltip>
+
+            {isUser && onEdit && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-foreground-muted hover:text-foreground"
+                    onClick={handleEdit}
+                  >
+                    <Pencil className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Edit</TooltipContent>
+              </Tooltip>
+            )}
 
             {!isUser && (
               <>

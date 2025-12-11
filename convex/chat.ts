@@ -19,6 +19,7 @@ export const createStream = mutation({
     chatId: v.id("chats"),
     model: v.optional(v.string()),
     reasoningEffort: v.optional(v.union(v.literal("auto"), v.literal("deepthink"))),
+    webSearch: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const streamId = await persistentTextStreaming.createStream(ctx);
@@ -37,6 +38,7 @@ export const createStream = mutation({
       messageId,
       model: args.model || "gpt-5.1",
       reasoningEffort: args.reasoningEffort,
+      webSearch: args.webSearch,
     });
 
     await ctx.db.patch(args.chatId, {
@@ -192,6 +194,7 @@ export const streamChat = httpAction(async (ctx, request) => {
     // Only set reasoningEffort for "deepthink" - "auto" means don't set it
     const isDeepthink = metadata.reasoningEffort === "deepthink";
     const reasoningEffort = isDeepthink ? "high" : undefined;
+    const useWebSearch = metadata.webSearch === true;
 
     const generateAIResponse = async (
       _ctx: typeof ctx,
@@ -202,12 +205,19 @@ export const streamChat = httpAction(async (ctx, request) => {
       let fullText = "";
       let reasoningText = "";
       let hasStartedText = false;
+      let wasCancelled = false;
 
       try {
         const result = streamText({
           model: openai(model),
-          system: `You are a helpful AI assistant. Be concise and helpful. Use markdown formatting when appropriate.`,
+          system: `You are a helpful AI assistant. Be concise and helpful. Use markdown formatting when appropriate.${useWebSearch ? " You have access to a web search tool - use it to find current, up-to-date information when the user asks about recent events, news, or anything that may have changed since your knowledge cutoff." : ""}`,
           messages: convertToModelMessages(messages),
+          ...(useWebSearch && {
+            tools: {
+              web_search: openai.tools.webSearch({}),
+            },
+            maxSteps: 3,
+          }),
           providerOptions: {
             openai: {
               ...(reasoningEffort && { reasoningEffort }),
@@ -223,6 +233,14 @@ export const streamChat = httpAction(async (ctx, request) => {
         let currentSessionContent = "";
 
         for await (const part of result.fullStream) {
+          // Check if stream was cancelled (metadata deleted)
+          const stillActive = await ctx.runQuery(internal.chat.getStreamMetadata, { streamId: _streamId });
+          if (!stillActive) {
+            console.log("[streamChat] Stream cancelled, stopping generation");
+            wasCancelled = true;
+            break;
+          }
+
           if (part.type === "reasoning-start") {
             // Start new thinking session
             reasoningStartTime = Date.now();
@@ -266,14 +284,17 @@ export const streamChat = httpAction(async (ctx, request) => {
         await chunkAppender(errorText);
       }
 
-      await ctx.runMutation(internal.chat.updateMessageContent, {
-        messageId: metadata.messageId,
-        content: fullText,
-      });
+      // Only update message if not cancelled (cancel already saved the partial content)
+      if (!wasCancelled) {
+        await ctx.runMutation(internal.chat.updateMessageContent, {
+          messageId: metadata.messageId,
+          content: fullText,
+        });
 
-      await ctx.runMutation(internal.chat.deleteStreamMetadata, {
-        streamId: _streamId,
-      });
+        await ctx.runMutation(internal.chat.deleteStreamMetadata, {
+          streamId: _streamId,
+        });
+      }
     };
 
     const response = await persistentTextStreaming.stream(

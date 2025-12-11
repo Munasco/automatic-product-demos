@@ -2,9 +2,12 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useMutation } from "convex/react";
 import type { Id } from "../convex/_generated/dataModel";
+import { api } from "../convex/_generated/api";
 import { ChatContainer } from "./chat/chat-container";
 import { CanvasPanel } from "./canvas/canvas-panel";
+import { DebugPanel } from "./debug-panel";
 import { ThinkingSidebar, type ThinkingSession } from "./chat/thinking-sidebar";
 import { useChat, useChats } from "../hooks/use-chats";
 import { useStreamChat } from "../hooks/use-stream-chat";
@@ -13,7 +16,7 @@ import { useCanvasComments } from "../hooks/use-canvas-comments";
 import type { AttachedFile } from "./chat/chat-input";
 import { Button } from "./ui/button";
 import { useAtom } from "jotai";
-import { selectedModelAtom, reasoningEffortAtom } from "../stores/atoms";
+import { selectedModelAtom, reasoningEffortAtom, webSearchAtom } from "../stores/atoms";
 import { cn } from "../lib/utils";
 import {
   PenSquare,
@@ -104,6 +107,7 @@ export function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedModel, setSelectedModel] = useAtom(selectedModelAtom);
   const [reasoningEffort, setReasoningEffort] = useAtom(reasoningEffortAtom);
+  const [webSearch, setWebSearch] = useAtom(webSearchAtom);
   const [files, setFiles] = useState<AttachedFile[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [canvasContent, setCanvasContent] = useState("");
@@ -170,6 +174,7 @@ export function ChatPage() {
     chatId,
     model: selectedModel,
     reasoningEffort: selectedModel === "gpt-5.1" ? reasoningEffort : undefined,
+    webSearch,
   });
 
   // Canvas hooks
@@ -187,6 +192,9 @@ export function ChatPage() {
     submitForReview,
     requestAIReply,
   } = useCanvasComments(canvasDocument?._id ?? null, canvasContent);
+
+  // Edit message mutation - deletes from edited message onward and resends
+  const removeMessageMutation = useMutation(api.messages.remove);
 
   // Reset canvas content when document changes using key-based approach
   // This avoids useEffect and setState issues
@@ -215,6 +223,18 @@ export function ChatPage() {
     setInputValue(prompt);
   }, []);
 
+  // Handle Comment on message selection (brief inline response)
+  const handleMessageComment = useCallback((selectedText: string) => {
+    const prompt = `Briefly clarify or comment on this:\n\n"${selectedText}"`;
+    setInputValue(prompt);
+  }, []);
+
+  // Handle Ask AI on message selection (full detailed response)
+  const handleMessageAskAI = useCallback((selectedText: string) => {
+    const prompt = `Regarding: "${selectedText}"\n\nPlease explain this in detail.`;
+    setInputValue(prompt);
+  }, []);
+
   // Handle opening thinking sidebar
   const handleOpenThinkingSidebar = useCallback(
     (sessions: ThinkingSession[], totalTime: number) => {
@@ -223,6 +243,30 @@ export function ChatPage() {
       setThinkingSidebarOpen(true);
     },
     []
+  );
+
+  // Handle editing a message - delete from this message onward and resend
+  const handleEditMessage = useCallback(
+    async (messageId: string, content: string) => {
+      // Find the edited message and its index
+      const editIndex = messages.findIndex((m) => m.id === messageId);
+      if (editIndex === -1) return;
+
+      const editedMessage = messages[editIndex];
+      const newEditVersion = (editedMessage.editVersion || 1) + 1;
+
+      // Delete all messages from this index onward (including the edited one)
+      const messagesToDelete = messages.slice(editIndex);
+      await Promise.all(
+        messagesToDelete.map((m) =>
+          removeMessageMutation({ messageId: m.id as Id<"messages"> })
+        )
+      );
+
+      // Send the edited content as a new message with incremented version
+      await sendMessage(content, newEditVersion);
+    },
+    [messages, removeMessageMutation, sendMessage]
   );
 
   // Navigate helper
@@ -403,11 +447,6 @@ export function ChatPage() {
                   Loading more chats...
                 </div>
               )}
-              {!canLoadMore && chats.length > 0 && (
-                <div className="px-3 py-2 text-xs text-foreground-muted text-center">
-                  No more chats to load
-                </div>
-              )}
             </>
           )}
         </SidebarContent>
@@ -422,6 +461,9 @@ export function ChatPage() {
             onInputChange={setInputValue}
             onSubmit={handleSubmit}
             onStop={stop}
+            onEditMessage={handleEditMessage}
+            onComment={handleMessageComment}
+            onAskAI={handleMessageAskAI}
             isStreaming={isStreaming}
             isLoadingHistory={isLoadingHistory}
             selectedModel={selectedModel}
@@ -432,6 +474,8 @@ export function ChatPage() {
             onReasoningEffortChange={setReasoningEffort}
             files={files}
             onFilesChange={setFiles}
+            webSearch={webSearch}
+            onWebSearchChange={setWebSearch}
             onToggleCanvas={() => setCanvasOpen(!canvasOpen)}
             canvasOpen={canvasOpen}
             onOpenThinkingSidebar={handleOpenThinkingSidebar}
@@ -462,6 +506,7 @@ export function ChatPage() {
           onClose={() => setThinkingSidebarOpen(false)}
         />
       </SidebarInset>
+      <DebugPanel />
     </SidebarProvider>
   );
 }

@@ -5,11 +5,31 @@ import ReactMarkdown, { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeKatex from "rehype-katex";
 import { ChevronRight } from "lucide-react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import { CodeBlock } from "./code-block";
+
+// Sanitize schema - allow standard HTML + KaTeX elements
+const sanitizeSchema = {
+  ...defaultSchema,
+  tagNames: [
+    ...(defaultSchema.tagNames || []),
+    // KaTeX elements
+    "math", "semantics", "mrow", "mi", "mo", "mn", "msup", "msub", "mfrac", "mroot", "msqrt", "mtext", "mspace", "mover", "munder", "munderover", "mtable", "mtr", "mtd", "annotation",
+  ],
+  attributes: {
+    ...defaultSchema.attributes,
+    "*": [...(defaultSchema.attributes?.["*"] || []), "className", "class", "style"],
+    span: [...(defaultSchema.attributes?.span || []), "aria-hidden"],
+    div: [...(defaultSchema.attributes?.div || [])],
+    // Details/summary for thinking blocks
+    details: ["className", "class", "open"],
+    summary: ["className", "class", "data-thinking", "data-start", "data-thought-duration"],
+  },
+};
 
 // Render LaTeX math expressions using KaTeX (skip code blocks, avoid false positives)
 function renderMath(content: string): string {
@@ -87,6 +107,23 @@ function renderMath(content: string): string {
   return result;
 }
 
+// Animated text with wave effect on each character
+function AnimatedText({ text }: { text: string }) {
+  return (
+    <span className="inline-flex">
+      {text.split("").map((char, i) => (
+        <span
+          key={i}
+          className="animate-char-wave"
+          style={{ animationDelay: `${i * 80}ms` }}
+        >
+          {char === " " ? "\u00A0" : char}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 // Thinking/Thought summary component with live timer
 function ThinkingSummary({ startTime, isComplete, duration }: {
   startTime?: number;
@@ -106,12 +143,11 @@ function ThinkingSummary({ startTime, isComplete, duration }: {
   }, [startTime, isComplete]);
 
   const displayTime = isComplete ? (duration || elapsed) : elapsed;
-  const label = isComplete ? `Thought for ${displayTime}s` : "Thinking...";
 
   return (
     <span className="flex items-center gap-2">
       <ChevronRight className="size-4 transition-transform group-open:rotate-90" />
-      {label}
+      {isComplete ? `Thought for ${displayTime}s` : <AnimatedText text="Thinking..." />}
     </span>
   );
 }
@@ -213,7 +249,7 @@ const markdownComponents: Partial<Components> = {
 
   // Blockquote
   blockquote: ({ children }: { children?: ReactNode }) => (
-    <blockquote className="mb-4 pl-4 border-l-2 border-zinc-700 text-zinc-500">
+    <blockquote className="mb-4 pl-4 border-l-2 border-border italic text-foreground-secondary">
       {children}
     </blockquote>
   ),
@@ -299,7 +335,7 @@ export const Markdown = memo(function Markdown({ content, className = "", isStre
     <div className={`text-base leading-7 ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema], rehypeKatex]}
         components={components}
       >
         {renderMath(content)}

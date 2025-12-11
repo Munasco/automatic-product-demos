@@ -1,8 +1,9 @@
 "use client";
 
-import { X, ChevronRight, Clock } from "lucide-react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
-
+import { Markdown } from "@/lib/markdown";
+import { Button } from "@/components/ui/button";
 export interface ThinkingSession {
   id: number;
   duration: number;
@@ -17,7 +18,12 @@ interface ThinkingSidebarProps {
   onClose: () => void;
 }
 
-export function ThinkingSidebar({ sessions, totalTime, isOpen, onClose }: ThinkingSidebarProps) {
+export function ThinkingSidebar({
+  sessions,
+  totalTime,
+  isOpen,
+  onClose,
+}: ThinkingSidebarProps) {
   if (!isOpen) return null;
 
   return (
@@ -26,16 +32,15 @@ export function ThinkingSidebar({ sessions, totalTime, isOpen, onClose }: Thinki
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-2">
           <span className="font-medium text-foreground">Thinking</span>
-          <span className="text-xs text-foreground-muted">
-            {totalTime}s total
-          </span>
+          <span className="text-xs text-foreground-muted">{totalTime}s</span>
         </div>
-        <button
+        <Button
+          variant="ghost"
           onClick={onClose}
           className="p-1 rounded hover:bg-background-hover text-foreground-muted hover:text-foreground"
         >
-          <X className="size-4" />
-        </button>
+          <X className="size-5" />
+        </Button>
       </div>
 
       {/* Sessions list */}
@@ -70,37 +75,24 @@ function ThinkingSessionItem({
   return (
     <div className={cn("px-4 py-3", !isLast && "border-b border-border/50")}>
       {/* Session header */}
-      <div className="flex items-start gap-2 mb-2">
-        <div className="mt-1">
-          {session.isComplete ? (
-            <div className="size-4 rounded-full bg-accent flex items-center justify-center">
-              <svg className="size-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-              </svg>
-            </div>
-          ) : (
-            <div className="size-4 rounded-full border-2 border-foreground-muted animate-pulse" />
-          )}
+      <div className="flex items-start gap-3">
+        {/* Simple bullet dot */}
+        <div className="mt-2">
+          <div className={cn("size-2 rounded-full", "bg-white")} />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-foreground-secondary truncate">
-              {title}
-            </span>
-            <span className="text-xs text-foreground-muted flex items-center gap-1">
-              <Clock className="size-3" />
-              {session.duration}s
-            </span>
-          </div>
+          <span className="text-sm font-medium text-foreground">{title}</span>
+          {/* Session content - markdown rendered */}
+          {body && (
+            <div className="text-sm text-foreground-muted leading-relaxed mt-1">
+              <Markdown
+                content={body}
+                className="[&_p]:mb-2 [&_p]:last:mb-0 [&_pre]:my-2 [&_ul]:my-2 [&_ol]:my-2"
+              />
+            </div>
+          )}
         </div>
       </div>
-
-      {/* Session content */}
-      {body && (
-        <div className="text-sm text-foreground-muted leading-relaxed pl-6">
-          {body}
-        </div>
-      )}
     </div>
   );
 }
@@ -145,7 +137,13 @@ export function parseThinkingSessions(content: string): {
   }
 
   // Get all end positions
-  const ends: { index: number; id: number; duration: number; totalTime: number; endIndex: number }[] = [];
+  const ends: {
+    index: number;
+    id: number;
+    duration: number;
+    totalTime: number;
+    endIndex: number;
+  }[] = [];
   while ((match = endRegex.exec(content)) !== null) {
     ends.push({
       index: match.index,
@@ -162,7 +160,7 @@ export function parseThinkingSessions(content: string): {
   // Extract sessions
   for (let i = 0; i < starts.length; i++) {
     const start = starts[i];
-    const end = ends.find(e => e.id === start.id);
+    const end = ends.find((e) => e.id === start.id);
 
     // Find the content between start and end (or end of string if still thinking)
     const startMarker = `<!--THINKING_START:${start.id}:${start.timestamp}-->`;
@@ -191,7 +189,8 @@ export function parseThinkingSessions(content: string): {
   rangesToRemove.sort((a, b) => b.start - a.start);
   let cleanContent = content;
   for (const range of rangesToRemove) {
-    cleanContent = cleanContent.slice(0, range.start) + cleanContent.slice(range.end);
+    cleanContent =
+      cleanContent.slice(0, range.start) + cleanContent.slice(range.end);
   }
 
   // Trim any leading/trailing whitespace from clean content

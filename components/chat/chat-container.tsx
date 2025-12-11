@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { ChatMessage } from "./message";
 import { ChatInput, type AttachedFile } from "./chat-input";
 import { ThinkingIndicator } from "./thinking-indicator";
@@ -11,12 +11,17 @@ import { type ModelType, type ReasoningEffort } from "@/stores/atoms";
 import { Header } from "./header";
 import { useSidebar } from "@/components/ui/sidebar";
 import type { ThinkingSession } from "./thinking-sidebar";
+import {
+  ScrollCheckpoints,
+  createMessageCheckpoints,
+} from "@/components/ui/scroll-checkpoints";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   streamId?: string;
+  editVersion?: number;
 }
 
 interface ChatContainerProps {
@@ -28,6 +33,9 @@ interface ChatContainerProps {
   onStop?: () => void;
   onFork?: (messageIndex: number) => void;
   onRegenerate?: (messageIndex: number) => void;
+  onEditMessage?: (messageId: string, content: string) => void;
+  onComment?: (selectedText: string) => void;
+  onAskAI?: (selectedText: string) => void;
   isStreaming?: boolean;
   isLoadingHistory?: boolean;
   onToggleCanvas?: () => void;
@@ -40,7 +48,12 @@ interface ChatContainerProps {
   onReasoningEffortChange?: (effort: ReasoningEffort) => void;
   files?: AttachedFile[];
   onFilesChange?: (files: AttachedFile[]) => void;
-  onOpenThinkingSidebar?: (sessions: ThinkingSession[], totalTime: number) => void;
+  webSearch?: boolean;
+  onWebSearchChange?: (enabled: boolean) => void;
+  onOpenThinkingSidebar?: (
+    sessions: ThinkingSession[],
+    totalTime: number
+  ) => void;
 }
 
 export function ChatContainer({
@@ -52,6 +65,9 @@ export function ChatContainer({
   onStop,
   onFork,
   onRegenerate,
+  onEditMessage,
+  onComment,
+  onAskAI,
   isStreaming = false,
   isLoadingHistory = false,
   onToggleCanvas,
@@ -64,10 +80,13 @@ export function ChatContainer({
   onReasoningEffortChange,
   files,
   onFilesChange,
+  webSearch,
+  onWebSearchChange,
   onOpenThinkingSidebar,
 }: ChatContainerProps) {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const scrollBottomRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
     scrollBottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -83,6 +102,12 @@ export function ChatContainer({
   const isEmpty = messages.length === 0 && !isLoadingHistory;
   const { setOpen: setSidebarOpen, open: sidebarOpen } = useSidebar();
 
+  // Create message checkpoints for scroll navigation
+  const messageCheckpoints = useMemo(
+    () => createMessageCheckpoints(messages),
+    [messages]
+  );
+
   return (
     <div className="flex flex-col h-full w-full flex-1">
       <Header
@@ -96,27 +121,41 @@ export function ChatContainer({
         ) : isEmpty ? (
           <NoMessagesSent />
         ) : (
-          <ScrollArea className="h-full" onScroll={handleScroll}>
-            <div className="max-w-5xl mx-auto px-4 py-6">
-              {messages.map((message, index) => (
-                <ChatMessage
-                  key={message.id}
-                  message={message}
-                  streamUrl={streamUrl}
-                  onFork={() => onFork?.(index)}
-                  onRegenerate={() => onRegenerate?.(index)}
-                  onOpenThinkingSidebar={onOpenThinkingSidebar}
-                />
-              ))}
-              {/* Show thinking indicator when loading with no assistant response yet */}
-              {isStreaming &&
-                (messages.length === 0 ||
-                  messages[messages.length - 1]?.role === "user") && (
-                  <ThinkingIndicator title="Thinking" isThinking={true} />
-                )}
-              <div ref={scrollBottomRef} />
-            </div>
-          </ScrollArea>
+          <>
+            {/* Message scroll checkpoints */}
+            <ScrollCheckpoints
+              messages={messageCheckpoints}
+              containerRef={scrollAreaRef}
+            />
+            <ScrollArea
+              ref={scrollAreaRef}
+              className="h-full"
+              onScroll={handleScroll}
+            >
+              <div className="max-w-5xl mx-auto px-4 py-6">
+                {messages.map((message, index) => (
+                  <ChatMessage
+                    key={message.id}
+                    message={message}
+                    streamUrl={streamUrl}
+                    onFork={() => onFork?.(index)}
+                    onRegenerate={() => onRegenerate?.(index)}
+                    onEdit={onEditMessage ? (content) => onEditMessage(message.id, content) : undefined}
+                    onComment={onComment}
+                    onAskAI={onAskAI}
+                    onOpenThinkingSidebar={onOpenThinkingSidebar}
+                  />
+                ))}
+                {/* Show thinking indicator when loading with no assistant response yet */}
+                {isStreaming &&
+                  (messages.length === 0 ||
+                    messages[messages.length - 1]?.role === "user") && (
+                    <ThinkingIndicator title="Thinking" isThinking={true} />
+                  )}
+                <div ref={scrollBottomRef} />
+              </div>
+            </ScrollArea>
+          </>
         )}
 
         {/* Scroll to bottom button */}
@@ -149,6 +188,8 @@ export function ChatContainer({
         onReasoningEffortChange={onReasoningEffortChange}
         files={files}
         onFilesChange={onFilesChange}
+        webSearch={webSearch}
+        onWebSearchChange={onWebSearchChange}
       />
     </div>
   );

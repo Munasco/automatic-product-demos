@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useStream } from "@convex-dev/persistent-text-streaming/react";
+import { useAtomValue } from "jotai";
 import { api } from "@/convex/_generated/api";
 import type { StreamId } from "@convex-dev/persistent-text-streaming";
 import { MarkdownRenderer } from "./markdown-renderer";
@@ -12,35 +13,116 @@ import {
   type ThinkingSession,
 } from "./thinking-sidebar";
 import { toast } from "sonner";
+import { isStreamingAtom } from "@/stores/atoms";
 
 interface StreamingMessageProps {
-  streamId: string;
-  streamUrl: URL;
+  streamId?: string;
+  streamUrl?: URL;
+  initialContent?: string;
+  isStreaming?: boolean;
   onOpenThinkingSidebar?: (
     sessions: ThinkingSession[],
     totalTime: number
   ) => void;
 }
 
+// Wrapper that decides between streaming and static rendering
 export function StreamingMessage({
   streamId,
   streamUrl,
+  initialContent,
   onOpenThinkingSidebar,
 }: StreamingMessageProps) {
+  // Track if this message started as streaming (on initial mount)
+  // This prevents switching to StaticMessage mid-stream when DB updates
+  const wasStreaming = !!(streamId && streamUrl && !initialContent);
+
+  // Keep using ActiveStreamMessage if we started streaming
+  if (wasStreaming && streamId && streamUrl) {
+    return (
+      <ActiveStreamMessage
+        streamId={streamId}
+        streamUrl={streamUrl}
+        onOpenThinkingSidebar={onOpenThinkingSidebar}
+      />
+    );
+  }
+
+  // Only StaticMessage for messages loaded from DB on page load
+  if (initialContent) {
+    return (
+      <StaticMessage
+        content={initialContent}
+        onOpenThinkingSidebar={onOpenThinkingSidebar}
+      />
+    );
+  }
+
+  // Fallback - should not happen
+  return null;
+}
+
+// Static message with thinking parsing (for completed messages)
+function StaticMessage({
+  content,
+  onOpenThinkingSidebar,
+}: {
+  content: string;
+  onOpenThinkingSidebar?: (
+    sessions: ThinkingSession[],
+    totalTime: number
+  ) => void;
+}) {
+  const { sessions, totalTime, cleanContent } = useMemo(() => {
+    return parseThinkingSessions(content);
+  }, [content]);
+
+  const handleOpenSidebar = () => {
+    onOpenThinkingSidebar?.(sessions, totalTime);
+  };
+
+  return (
+    <div>
+      {sessions.length > 0 && (
+        <ThinkingAccordion
+          sessions={sessions}
+          totalTime={totalTime}
+          isStreaming={false}
+          onOpenSidebar={handleOpenSidebar}
+        />
+      )}
+      <MarkdownRenderer content={cleanContent} isStreaming={false} />
+    </div>
+  );
+}
+
+// Active streaming message
+function ActiveStreamMessage({
+  streamId,
+  streamUrl,
+  onOpenThinkingSidebar,
+}: {
+  streamId: string;
+  streamUrl: URL;
+  onOpenThinkingSidebar?: (
+    sessions: ThinkingSession[],
+    totalTime: number
+  ) => void;
+}) {
+  const globalIsStreaming = useAtomValue(isStreamingAtom);
+
   const { text, status } = useStream(
     api.chat.getStreamBody,
     streamUrl,
-    true, // driven - this instance drives the stream
+    globalIsStreaming, // driven by atom state
     streamId as StreamId
   );
 
-  // Parse thinking sessions from content
   const { sessions, totalTime, cleanContent } = useMemo(() => {
     if (!text) return { sessions: [], totalTime: 0, cleanContent: "" };
     return parseThinkingSessions(text);
   }, [text]);
 
-  // Show toast on error
   useEffect(() => {
     if (status === "error") {
       toast.error("Failed to load response", {
@@ -54,7 +136,6 @@ export function StreamingMessage({
     return <ThinkingIndicator title="Thinking" isThinking={true} />;
   }
 
-  // Handle error
   if (status === "error") {
     return null;
   }
@@ -67,7 +148,6 @@ export function StreamingMessage({
 
   return (
     <div>
-      {/* Thinking accordion - shows summed time and most recent trace */}
       {sessions.length > 0 && (
         <ThinkingAccordion
           sessions={sessions}
@@ -76,8 +156,6 @@ export function StreamingMessage({
           onOpenSidebar={handleOpenSidebar}
         />
       )}
-
-      {/* Main content (with thinking markers removed) */}
       <MarkdownRenderer content={cleanContent} isStreaming={isStreaming} />
     </div>
   );

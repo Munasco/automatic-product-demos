@@ -4,6 +4,23 @@ import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { cn } from "../../lib/utils";
 
+// Animated text with wave effect on each character
+function AnimatedText({ text, animate = true }: { text: string; animate?: boolean }) {
+  return (
+    <span className="inline-flex">
+      {text.split("").map((char, i) => (
+        <span
+          key={i}
+          className={animate ? "animate-char-wave" : ""}
+          style={animate ? { animationDelay: `${i * 80}ms` } : undefined}
+        >
+          {char === " " ? "\u00A0" : char}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 interface ThinkingIndicatorProps {
   title?: string;
   content?: string;
@@ -30,18 +47,12 @@ export function ThinkingIndicator({
           <ChevronRight
             className={cn(
               "size-4 transition-transform duration-200",
-              expanded && "rotate-90",
-              isThinking && !content && "animate-pulse"
+              expanded && "rotate-90"
             )}
           />
-          <span className="font-medium">{title}</span>
-          {isThinking && (
-            <span className="flex gap-1 ml-1 items-center">
-              <span className="w-1.5 h-1.5 rounded-full bg-foreground-muted animate-pulse" />
-              <span className="w-1.5 h-1.5 rounded-full bg-foreground-muted animate-pulse [animation-delay:200ms]" />
-              <span className="w-1.5 h-1.5 rounded-full bg-foreground-muted animate-pulse [animation-delay:400ms]" />
-            </span>
-          )}
+          <span className="font-medium">
+            <AnimatedText text={isThinking ? `${title}...` : title} animate={isThinking} />
+          </span>
         </button>
 
         {expanded && content && (

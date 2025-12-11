@@ -30,6 +30,7 @@ export const add = mutation({
       type: v.string(),
       url: v.string(),
     }))),
+    editVersion: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const messageId = await ctx.db.insert("messages", {
@@ -38,6 +39,7 @@ export const add = mutation({
       content: args.content,
       createdAt: Date.now(),
       attachments: args.attachments,
+      editVersion: args.editVersion,
     });
 
     // Update chat's updatedAt

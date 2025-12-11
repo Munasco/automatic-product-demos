@@ -52,6 +52,8 @@ interface ChatInputProps {
   onReasoningEffortChange?: (effort: ReasoningEffort) => void;
   files?: AttachedFile[];
   onFilesChange?: (files: AttachedFile[]) => void;
+  webSearch?: boolean;
+  onWebSearchChange?: (enabled: boolean) => void;
 }
 
 export function ChatInput({
@@ -71,6 +73,8 @@ export function ChatInput({
   onReasoningEffortChange,
   files = [],
   onFilesChange,
+  webSearch = false,
+  onWebSearchChange,
 }: ChatInputProps) {
   const currentModel =
     AVAILABLE_MODELS.find((m) => m.id === selectedModel) || AVAILABLE_MODELS[0];
@@ -203,12 +207,18 @@ export function ChatInput({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="size-8 text-foreground-muted hover:text-foreground"
+                  className={cn(
+                    "size-8",
+                    webSearch
+                      ? "text-accent bg-accent/10"
+                      : "text-foreground-muted hover:text-foreground"
+                  )}
+                  onClick={() => onWebSearchChange?.(!webSearch)}
                 >
                   <Globe className="size-5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Search web</TooltipContent>
+              <TooltipContent>{webSearch ? "Web search enabled" : "Enable web search"}</TooltipContent>
             </Tooltip>
 
             <Tooltip>

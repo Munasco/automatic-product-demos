@@ -44,3 +44,7 @@ export const sessionIdAtom = atomWithStorage<string>(
 
 export const selectedModelAtom = atom<ModelType>("gpt-5.1");
 export const reasoningEffortAtom = atom<ReasoningEffort>("auto");
+export const webSearchAtom = atom<boolean>(false);
+
+// Streaming state - true when generating, set to false to cancel
+export const isStreamingAtom = atom<boolean>(false);

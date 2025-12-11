@@ -2,8 +2,25 @@
 
 import { useState } from "react";
 import { ChevronRight, ChevronDown } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Markdown } from "@/lib/markdown";
 import type { ThinkingSession } from "./thinking-sidebar";
+
+// Animated text with wave effect on each character
+function AnimatedText({ text, animate = true }: { text: string; animate?: boolean }) {
+  return (
+    <span className="inline-flex">
+      {text.split("").map((char, i) => (
+        <span
+          key={i}
+          className={animate ? "animate-char-wave" : ""}
+          style={animate ? { animationDelay: `${i * 80}ms` } : undefined}
+        >
+          {char === " " ? "\u00A0" : char}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 interface ThinkingAccordionProps {
   sessions: ThinkingSession[];
@@ -47,18 +64,21 @@ export function ThinkingAccordion({
         onClick={handleClick}
         className="flex items-center gap-2 text-sm text-foreground-muted hover:text-foreground-secondary transition-colors"
       >
-        {isExpanded ? (
-          <ChevronDown className="size-4" />
-        ) : (
-          <ChevronRight className="size-4" />
-        )}
         <span className="font-medium">
-          {isThinking ? "Thinking..." : `Thought for ${totalTime}s`}
+          <AnimatedText
+            text={isThinking ? (title !== "Thinking..." ? title : "Thinking...") : `Thought for ${totalTime}s`}
+            animate={isThinking}
+          />
         </span>
         {sessions.length > 1 && (
           <span className="text-xs bg-background-secondary px-1.5 py-0.5 rounded">
             {sessions.length} steps
           </span>
+        )}
+        {isExpanded ? (
+          <ChevronDown className="size-4" />
+        ) : (
+          <ChevronRight className="size-4" />
         )}
       </button>
 
@@ -69,10 +89,11 @@ export function ThinkingAccordion({
           {title && title !== "Thinking..." && (
             <p className="font-medium text-foreground-secondary mb-1">{title}</p>
           )}
-          {/* Content */}
-          <div className="whitespace-pre-wrap">
-            {lines.slice(1).join("\n").trim() || latestSession.content}
-          </div>
+          {/* Content - markdown rendered */}
+          <Markdown
+            content={lines.slice(1).join("\n").trim() || latestSession.content}
+            className="[&_p]:mb-2 [&_p]:last:mb-0 [&_pre]:my-2 [&_ul]:my-2 [&_ol]:my-2"
+          />
         </div>
       )}
 

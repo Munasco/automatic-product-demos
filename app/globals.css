@@ -197,3 +197,17 @@ body {
     opacity: 0.25;
   }
 }
+
+/* Character wave animation - dims then brightens */
+@keyframes char-wave {
+  0%, 100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.animate-char-wave {
+  animation: char-wave 1.5s ease-in-out infinite;
+}
