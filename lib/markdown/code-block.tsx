@@ -1,11 +1,20 @@
 "use client";
 
-import { useState, useCallback, useEffect, memo } from "react";
+import { useState, useCallback, useEffect, useMemo, memo } from "react";
 import { Check, Copy } from "lucide-react";
 import { useAtomValue } from "jotai";
 import { codeThemeAtom } from "@/stores/code-theme";
-import { createHighlighter, type HighlighterCore } from "shiki";
-import { ShikiMagicMove } from "shiki-magic-move/react";
+import {
+  createHighlighter,
+  type Highlighter,
+  type BundledLanguage,
+} from "shiki";
+import {
+  codeToKeyedTokens,
+  createMagicMoveMachine,
+} from "shiki-magic-move/core";
+import { ShikiMagicMovePrecompiled } from "shiki-magic-move/react";
+import { SHIKI_THEMES, SHIKI_LANGUAGES } from "@/lib/constants";
 import "shiki-magic-move/dist/style.css";
 
 interface Props {
@@ -14,88 +23,17 @@ interface Props {
 }
 
 // Singleton highlighter instance
-let highlighterPromise: Promise<HighlighterCore> | null = null;
+let highlighterPromise: Promise<Highlighter> | null = null;
+let highlighterInstance: Highlighter | null = null;
 
-function getHighlighter(): Promise<HighlighterCore> {
+function getHighlighter(): Promise<Highlighter> {
   if (!highlighterPromise) {
     highlighterPromise = createHighlighter({
-      themes: [
-        "github-dark-high-contrast",
-        "github-dark",
-        "github-dark-dimmed",
-        "dark-plus",
-        "vitesse-dark",
-        "one-dark-pro",
-        "dracula",
-        "nord",
-        "tokyo-night",
-        "catppuccin-mocha",
-        "material-theme-darker",
-        "ayu-dark",
-        "night-owl",
-        "poimandres",
-        "monokai",
-        "slack-dark",
-        "synthwave-84",
-        "rose-pine-moon",
-        "houston",
-        "aurora-x",
-        "everforest-dark",
-      ],
-      langs: [
-        "javascript",
-        "typescript",
-        "jsx",
-        "tsx",
-        "json",
-        "html",
-        "css",
-        "python",
-        "rust",
-        "go",
-        "java",
-        "c",
-        "cpp",
-        "csharp",
-        "php",
-        "ruby",
-        "swift",
-        "kotlin",
-        "sql",
-        "bash",
-        "shell",
-        "yaml",
-        "markdown",
-        "dockerfile",
-        "graphql",
-        "vue",
-        "svelte",
-        "zig",
-        "elixir",
-        "erlang",
-        "haskell",
-        "lua",
-        "r",
-        "scala",
-        "clojure",
-        "ocaml",
-        "fsharp",
-        "dart",
-        "nim",
-        "crystal",
-        "julia",
-        "toml",
-        "ini",
-        "xml",
-        "scss",
-        "sass",
-        "less",
-        "astro",
-        "prisma",
-        "tex",
-        "latex",
-        "text",
-      ],
+      themes: [...SHIKI_THEMES],
+      langs: [...SHIKI_LANGUAGES],
+    }).then((h) => {
+      highlighterInstance = h;
+      return h;
     });
   }
   return highlighterPromise;
@@ -103,12 +41,40 @@ function getHighlighter(): Promise<HighlighterCore> {
 
 function CodeBlockInner({ code, lang }: Props) {
   const [copied, setCopied] = useState(false);
-  const [highlighter, setHighlighter] = useState<HighlighterCore | null>(null);
+  const [ready, setReady] = useState(!!highlighterInstance);
   const theme = useAtomValue(codeThemeAtom);
 
   useEffect(() => {
-    getHighlighter().then(setHighlighter);
-  }, []);
+    if (!ready) {
+      getHighlighter().then(() => setReady(true));
+    }
+  }, [ready]);
+
+  // Compile tokens using codeToKeyedTokens (lighter than codeToHtml)
+  const compiledTokens = useMemo(() => {
+    if (!highlighterInstance) {
+      console.error(
+        "CodeBlock: highlighterInstance is null, cannot compile tokens"
+      );
+      return null;
+    }
+
+    const safeLang = (lang || "text") as BundledLanguage;
+    const machine = createMagicMoveMachine((code) => {
+      if (!highlighterInstance) {
+        console.error(
+          "CodeBlock: highlighterInstance became null during compilation"
+        );
+        throw new Error("Highlighter instance is null");
+      }
+      return codeToKeyedTokens(highlighterInstance, code, {
+        lang: safeLang,
+        theme,
+      });
+    }, {});
+
+    return machine.commit(code).current;
+  }, [code, lang, theme]);
 
   const copy = useCallback(async () => {
     await navigator.clipboard.writeText(code);
@@ -117,12 +83,14 @@ function CodeBlockInner({ code, lang }: Props) {
   }, [code]);
 
   return (
-    <div className="group my-4 overflow-hidden border border-[#30363d]">
-      <div className="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-[#30363d]">
-        <span className="text-xs text-zinc-400 font-mono">{lang || "text"}</span>
+    <div className="group my-4 overflow-hidden border code-block-container code-block">
+      <div className="flex items-center justify-between px-4 py-2 border-b code-block-header">
+        <span className="text-xs font-mono code-block-lang">
+          {lang || "text"}
+        </span>
         <button
           onClick={copy}
-          className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors"
+          className="flex items-center gap-1.5 text-xs transition-colors hover:text-white code-block-button"
         >
           {copied ? (
             <>
@@ -135,18 +103,18 @@ function CodeBlockInner({ code, lang }: Props) {
           )}
         </button>
       </div>
-      <div className="overflow-x-auto text-sm [&>pre]:p-4 [&>pre]:m-0 [&_code]:font-mono [&_code]:leading-relaxed">
-        {highlighter ? (
-          <ShikiMagicMove
-            lang={lang || "text"}
-            theme={theme}
-            highlighter={highlighter}
-            code={code}
-            options={{ duration: 300, stagger: 0 }}
+      <div className="text-sm [&>pre]:p-4 [&>pre]:m-0 [&_code]:font-mono [&_code]:leading-relaxed">
+        {compiledTokens ? (
+          <ShikiMagicMovePrecompiled
+            steps={[compiledTokens]}
+            step={0}
+            options={{ duration: 100, stagger: 0 }}
           />
         ) : (
           <pre className="p-4 m-0 bg-[#0d1117]">
-            <code className="font-mono leading-relaxed text-[#e6edf3]">{code}</code>
+            <code className="font-mono leading-relaxed text-[#e6edf3]">
+              {code}
+            </code>
           </pre>
         )}
       </div>

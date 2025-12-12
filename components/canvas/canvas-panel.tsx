@@ -379,7 +379,13 @@ export function CanvasPanel({
                   onAskAI={onAskAI}
                   onCommentClick={(index) => {
                     const comment = inlineComments[index];
-                    if (comment) setActiveCommentId(comment._id);
+                    if (!comment) {
+                      console.error(
+                        `CanvasPanel: Cannot click comment - comment at index ${index} not found`
+                      );
+                      return;
+                    }
+                    setActiveCommentId(comment._id);
                   }}
                   activeCommentIndex={inlineComments.findIndex(
                     (c) => c._id === activeCommentId

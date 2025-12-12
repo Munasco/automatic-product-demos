@@ -12,25 +12,11 @@ export const list = query({
       .order("desc")
       .paginate(args.paginationOpts);
 
-    // Get message counts for each chat
-    const page = await Promise.all(
-      chats.page.map(async (chat) => {
-        const messages = await ctx.db
-          .query("messages")
-          .withIndex("by_chat", (q) => q.eq("chatId", chat._id))
-          .collect();
-        return {
-          ...chat,
-          messageCount: messages.length,
-        };
-      })
-    );
-
-    return { ...chats, page };
+    return chats;
   },
 });
 
-// Get a single chat with its messages
+
 export const get = query({
   args: { chatId: v.id("chats") },
   handler: async (ctx, args) => {

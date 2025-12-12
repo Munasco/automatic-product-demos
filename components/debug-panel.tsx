@@ -5,7 +5,7 @@ import {
   selectedModelAtom,
   reasoningEffortAtom,
   webSearchAtom,
-  isStreamingAtom,
+  shouldStreamAtom,
 } from "@/stores/atoms";
 import { useState } from "react";
 import { Bug, X, ChevronRight } from "lucide-react";
@@ -19,7 +19,7 @@ export function DebugPanel() {
   const selectedModel = useAtomValue(selectedModelAtom);
   const reasoningEffort = useAtomValue(reasoningEffortAtom);
   const webSearch = useAtomValue(webSearchAtom);
-  const isStreaming = useAtomValue(isStreamingAtom);
+  const shouldStream = useAtomValue(shouldStreamAtom);
 
   // Only show in development
   if (process.env.NODE_ENV !== "development") {
@@ -79,7 +79,7 @@ export function DebugPanel() {
       {/* Content */}
       {!isMinimized && (
         <div className="p-3 space-y-2 max-h-96 overflow-auto">
-          <StateRow label="Model" value={selectedModel} />
+          <StateRow label="Model" value={selectedModel.id} />
           <StateRow label="Reasoning" value={reasoningEffort} />
           <StateRow
             label="Web Search"
@@ -87,9 +87,9 @@ export function DebugPanel() {
             highlight={webSearch}
           />
           <StateRow
-            label="Streaming"
-            value={isStreaming}
-            highlight={isStreaming}
+            label="Should Stream"
+            value={shouldStream}
+            highlight={shouldStream}
           />
 
           <div className="border-t border-zinc-700 pt-2 mt-2">

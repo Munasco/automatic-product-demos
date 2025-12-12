@@ -21,7 +21,8 @@
       "Bash(source:*)",
       "WebFetch(domain:shiki.style)",
       "Bash(node:*)",
-      "Bash(npx -y wscat:*)"
+      "Bash(npx -y wscat:*)",
+      "Bash(git clone:*)"
     ],
     "deny": [],
     "ask": []

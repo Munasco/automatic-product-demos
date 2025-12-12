@@ -4,7 +4,6 @@ import { useState } from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
-import { Textarea } from "../ui/textarea";
 import {
   Copy,
   Volume2,
@@ -15,7 +14,6 @@ import {
   Check,
   MessageSquare,
   Pencil,
-  X,
 } from "lucide-react";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { StreamingMessage } from "./streaming-message";
@@ -124,6 +122,8 @@ export function ChatMessage({
                 initialContent={message.content}
                 isStreaming={isStreaming}
                 onOpenThinkingSidebar={onOpenThinkingSidebar}
+                onComment={onComment}
+                onAskAI={onAskAI}
               />
             ) : isEditing ? (
               <div className="flex flex-col gap-2">
@@ -153,11 +153,7 @@ export function ChatMessage({
                 </div>
               </div>
             ) : (
-              <MarkdownRenderer
-                content={message.content}
-                onComment={onComment}
-                onAskAI={onAskAI}
-              />
+              <MarkdownRenderer content={message.content} />
             )}
           </div>
         </div>

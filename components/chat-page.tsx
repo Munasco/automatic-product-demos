@@ -9,14 +9,18 @@ import { ChatContainer } from "./chat/chat-container";
 import { CanvasPanel } from "./canvas/canvas-panel";
 import { DebugPanel } from "./debug-panel";
 import { ThinkingSidebar, type ThinkingSession } from "./chat/thinking-sidebar";
-import { useChat, useChats } from "../hooks/use-chats";
+import { useChats } from "../hooks/use-chats";
 import { useStreamChat } from "../hooks/use-stream-chat";
 import { useCanvas } from "../hooks/use-canvas";
 import { useCanvasComments } from "../hooks/use-canvas-comments";
 import type { AttachedFile } from "./chat/chat-input";
 import { Button } from "./ui/button";
 import { useAtom } from "jotai";
-import { selectedModelAtom, reasoningEffortAtom, webSearchAtom } from "../stores/atoms";
+import {
+  selectedModelAtom,
+  reasoningEffortAtom,
+  webSearchAtom,
+} from "../stores/atoms";
 import { cn } from "../lib/utils";
 import {
   PenSquare,
@@ -100,10 +104,8 @@ function groupChatsByTime(
   return sortedKeys.map((key) => ({ label: key, chats: groups[key] }));
 }
 
-export function ChatPage() {
+export function ChatPage({ chatId }: { chatId: Id<"chats"> | undefined }) {
   const router = useRouter();
-  const params = useParams();
-  const chatId = (params?.id as Id<"chats">) || null;
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedModel, setSelectedModel] = useAtom(selectedModelAtom);
   const [reasoningEffort, setReasoningEffort] = useAtom(reasoningEffortAtom);
@@ -117,15 +119,6 @@ export function ChatPage() {
     []
   );
   const [thinkingTotalTime, setThinkingTotalTime] = useState(0);
-
-  // // Check if chat exists (only when chatId is provided)
-  // const { chat } = useChat(chatId);
-  // useEffect(() => {
-  //   // chat === null means not found (vs undefined which means loading)
-  //   if (chatId && chat === null) {
-  //     router.replace("/");
-  //   }
-  // }, [router, chatId, chat]);
 
   // Get chat list from Convex
   const {
@@ -142,7 +135,9 @@ export function ChatPage() {
 
   // Handle scroll for infinite loading
   const handleScroll = useCallback(() => {
-    if (!sidebarContentRef.current || isLoadingMore || !canLoadMore) return;
+    if (!sidebarContentRef.current || isLoadingMore || !canLoadMore) {
+      return;
+    }
 
     const { scrollTop, scrollHeight, clientHeight } = sidebarContentRef.current;
 
@@ -155,7 +150,9 @@ export function ChatPage() {
   // Add scroll event listener
   useEffect(() => {
     const sidebarContent = sidebarContentRef.current;
-    if (!sidebarContent) return;
+    if (!sidebarContent) {
+      return;
+    }
 
     sidebarContent.addEventListener("scroll", handleScroll);
     return () => sidebarContent.removeEventListener("scroll", handleScroll);
@@ -168,12 +165,13 @@ export function ChatPage() {
     sendMessage,
     createChatAndSend,
     stop,
-    isStreaming,
-    isLoadingHistory,
+    threadIsStreaming: isStreaming,
+    isLoadingChatHistory,
   } = useStreamChat({
-    chatId,
+    chatId: chatId ?? null,
     model: selectedModel,
-    reasoningEffort: selectedModel === "gpt-5.1" ? reasoningEffort : undefined,
+    reasoningEffort:
+      selectedModel.id === "gpt-5.1" ? reasoningEffort : undefined,
     webSearch,
   });
 
@@ -182,7 +180,7 @@ export function ChatPage() {
     document: canvasDocument,
     createOrUpdate: createOrUpdateCanvas,
     updateContent: updateCanvasContent,
-  } = useCanvas(chatId);
+  } = useCanvas(chatId ?? null);
   const {
     comments: canvasComments,
     addInlineComment,
@@ -249,8 +247,15 @@ export function ChatPage() {
   const handleEditMessage = useCallback(
     async (messageId: string, content: string) => {
       // Find the edited message and its index
-      const editIndex = messages.findIndex((m) => m.id === messageId);
-      if (editIndex === -1) return;
+      const editIndex = messages.findIndex(
+        (m: { id: string }) => m.id === messageId
+      );
+      if (editIndex === -1) {
+        console.error(
+          `ChatPage: Cannot edit message - message with ID ${messageId} not found`
+        );
+        return;
+      }
 
       const editedMessage = messages[editIndex];
       const newEditVersion = (editedMessage.editVersion || 1) + 1;
@@ -258,7 +263,7 @@ export function ChatPage() {
       // Delete all messages from this index onward (including the edited one)
       const messagesToDelete = messages.slice(editIndex);
       await Promise.all(
-        messagesToDelete.map((m) =>
+        messagesToDelete.map((m: { id: string }) =>
           removeMessageMutation({ messageId: m.id as Id<"messages"> })
         )
       );
@@ -307,7 +312,12 @@ export function ChatPage() {
 
   // Handle submit
   const handleSubmit = useCallback(async () => {
-    if (!inputValue.trim() || isStreaming) return;
+    if (!inputValue.trim() || isStreaming) {
+      console.error(
+        "ChatPage: Cannot submit - input empty or already streaming"
+      );
+      return;
+    }
 
     const userMessage = inputValue.trim();
     setInputValue("");
@@ -465,11 +475,9 @@ export function ChatPage() {
             onComment={handleMessageComment}
             onAskAI={handleMessageAskAI}
             isStreaming={isStreaming}
-            isLoadingHistory={isLoadingHistory}
+            isLoadingHistory={isLoadingChatHistory}
             selectedModel={selectedModel}
-            onModelChange={(modelId) =>
-              setSelectedModel(modelId as typeof selectedModel)
-            }
+            onModelChange={(model) => setSelectedModel(model)}
             reasoningEffort={reasoningEffort}
             onReasoningEffortChange={setReasoningEffort}
             files={files}

@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
-import { ModelType, AVAILABLE_MODELS, ReasoningEffort } from "@/stores/atoms";
+import { ModelOption, AVAILABLE_MODELS, ReasoningEffort } from "@/stores/atoms";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,8 +42,8 @@ interface ChatInputProps {
   onStop?: () => void;
   isLoading?: boolean;
   placeholder?: string;
-  selectedModel?: ModelType;
-  onModelChange?: (modelId: ModelType) => void;
+  selectedModel?: ModelOption;
+  onModelChange?: (modelId: ModelOption) => void;
   onToggleCanvas?: () => void;
   onToggleComments?: () => void;
   canvasOpen?: boolean;
@@ -63,7 +63,7 @@ export function ChatInput({
   onStop,
   isLoading = false,
   placeholder = "Ask anything",
-  selectedModel = "gpt-5.1",
+  selectedModel = AVAILABLE_MODELS[0],
   onModelChange,
   onToggleCanvas,
   onToggleComments,
@@ -76,8 +76,6 @@ export function ChatInput({
   webSearch = false,
   onWebSearchChange,
 }: ChatInputProps) {
-  const currentModel =
-    AVAILABLE_MODELS.find((m) => m.id === selectedModel) || AVAILABLE_MODELS[0];
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -107,6 +105,12 @@ export function ChatInput({
 
   const removeFile = (id: string) => {
     const file = files.find((f) => f.id === id);
+    if (!file) {
+      console.error(
+        `ChatInput: Cannot remove file - file with ID ${id} not found`
+      );
+      return;
+    }
     if (file?.preview) URL.revokeObjectURL(file.preview);
     onFilesChange?.(files.filter((f) => f.id !== id));
   };
@@ -149,7 +153,16 @@ export function ChatInput({
                   <div className="h-16 w-16 flex flex-col items-center justify-center bg-background-tertiary rounded-lg border border-border">
                     <FileText className="size-5 text-foreground-muted" />
                     <span className="text-[10px] text-foreground-muted mt-1 truncate max-w-14 px-1">
-                      {f.file.name.split(".").pop()}
+                      {(() => {
+                        const parts = f.file.name.split(".");
+                        if (parts.length === 0) {
+                          console.error(
+                            `ChatInput: Invalid file name "${f.file.name}" - cannot extract extension`
+                          );
+                          return "file";
+                        }
+                        return parts.pop() || "file";
+                      })()}
                     </span>
                   </div>
                 )}
@@ -218,7 +231,9 @@ export function ChatInput({
                   <Globe className="size-5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>{webSearch ? "Web search enabled" : "Enable web search"}</TooltipContent>
+              <TooltipContent>
+                {webSearch ? "Web search enabled" : "Enable web search"}
+              </TooltipContent>
             </Tooltip>
 
             <Tooltip>
@@ -254,8 +269,8 @@ export function ChatInput({
                   size="sm"
                   className="ml-2 h-6 px-2 text-xs text-foreground-muted hover:text-foreground gap-1"
                 >
-                  {getModelIcon(currentModel.icon)}
-                  {currentModel.name}
+                  {getModelIcon(selectedModel.icon)}
+                  {selectedModel.name}
                   <ChevronDown className="size-3" />
                 </Button>
               </DropdownMenuTrigger>
@@ -263,10 +278,10 @@ export function ChatInput({
                 {AVAILABLE_MODELS.map((model) => (
                   <DropdownMenuItem
                     key={model.id}
-                    onClick={() => onModelChange?.(model.id)}
+                    onClick={() => onModelChange?.(model)}
                     className={cn(
                       "flex items-start gap-3 py-2",
-                      model.id === selectedModel && "bg-background-hover"
+                      model.id === selectedModel.id && "bg-background-hover"
                     )}
                   >
                     <div className="mt-0.5">{getModelIcon(model.icon)}</div>
@@ -282,7 +297,7 @@ export function ChatInput({
             </DropdownMenu>
 
             {/* Reasoning Effort Selector - for gpt-5.1 */}
-            {selectedModel === "gpt-5.1" && (
+            {selectedModel.id === "gpt-5.1" && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button

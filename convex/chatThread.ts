@@ -1,17 +1,21 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, query, httpAction, internalMutation, internalQuery } from "./_generated/server";
 import { components, internal } from "./_generated/api";
-import { PersistentTextStreaming, type StreamId } from "@convex-dev/persistent-text-streaming";
 import { createOpenAI } from "@ai-sdk/openai";
 import { streamText, convertToModelMessages, type UIMessage } from "ai";
+import {
+  createStream as createPersistentStream, getStreamBody as getPersistentStreamBody,
+  stream as persistentStream, type StreamId
+} from "./utils";
 
 const openai = createOpenAI({
-  apiKey: process.env.OPENAI_KEY || process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_KEY
 });
+if (!openai) {
+  throw new ConvexError("Missing OPENAI_KEY");
+}
 
-const persistentTextStreaming = new PersistentTextStreaming(
-  components.persistentTextStreaming
-);
+
 
 // Create a new stream and assistant message
 export const createStream = mutation({
@@ -22,7 +26,8 @@ export const createStream = mutation({
     webSearch: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const streamId = await persistentTextStreaming.createStream(ctx);
+    // Create stream using the component
+    const streamId = await createPersistentStream(ctx);
 
     const messageId = await ctx.db.insert("messages", {
       chatId: args.chatId,
@@ -36,7 +41,7 @@ export const createStream = mutation({
       streamId,
       chatId: args.chatId,
       messageId,
-      model: args.model || "gpt-5.1",
+      model: args.model || "gpt-5.2",
       reasoningEffort: args.reasoningEffort,
       webSearch: args.webSearch,
     });
@@ -72,11 +77,11 @@ export const getChatMessages = internalQuery({
   },
 });
 
-// Get stream body for a single stream
+// Get stream body for a single stream (uses component)
 export const getStreamBody = query({
   args: { streamId: v.string() },
   handler: async (ctx, args) => {
-    return await persistentTextStreaming.getStreamBody(ctx, args.streamId as StreamId);
+    return await getPersistentStreamBody(ctx, args.streamId as StreamId);
   },
 });
 
@@ -119,9 +124,15 @@ export const cancelStream = mutation({
       return { cancelled: false, reason: "No active stream" };
     }
 
-    // Get current stream content
-    const streamBody = await persistentTextStreaming.getStreamBody(ctx, metadata.streamId as StreamId);
+    // Get current stream content from component
+    const streamBody = await getPersistentStreamBody(ctx, metadata.streamId as StreamId);
     const currentText = streamBody.text || "";
+
+    // Mark stream as error (component handles the status update)
+    await ctx.runMutation(components.streaming.lib.setStreamStatus, {
+      streamId: metadata.streamId,
+      status: "error",
+    });
 
     // Update message with current content (even if partial)
     await ctx.db.patch(metadata.messageId, {
@@ -165,7 +176,7 @@ export const streamChat = httpAction(async (ctx, request) => {
       );
     }
 
-    const metadata = await ctx.runQuery(internal.chat.getStreamMetadata, { streamId });
+    const metadata = await ctx.runQuery(internal.chatThread.getStreamMetadata, { streamId });
 
     if (!metadata) {
       return new Response(
@@ -180,7 +191,7 @@ export const streamChat = httpAction(async (ctx, request) => {
       );
     }
 
-    const dbMessages = await ctx.runQuery(internal.chat.getChatMessages, { chatId: metadata.chatId });
+    const dbMessages = await ctx.runQuery(internal.chatThread.getChatMessages, { chatId: metadata.chatId });
 
     const messages: UIMessage[] = dbMessages
       .filter(m => m._id !== metadata.messageId)
@@ -202,15 +213,16 @@ export const streamChat = httpAction(async (ctx, request) => {
       _streamId: string,
       chunkAppender: (text: string) => Promise<void>
     ) => {
-      let fullText = "";
-      let reasoningText = "";
-      let hasStartedText = false;
+      let fullTextWithReasoning = "";
       let wasCancelled = false;
 
       try {
         const result = streamText({
           model: openai(model),
-          system: `You are a helpful AI assistant. Be concise and helpful. Use markdown formatting when appropriate.${useWebSearch ? " You have access to a web search tool - use it to find current, up-to-date information when the user asks about recent events, news, or anything that may have changed since your knowledge cutoff." : ""}`,
+          system:
+            `You are a helpful AI assistant. Be concise and helpful.
+             Use markdown formatting when appropriate.${useWebSearch ?
+              " You have access to a web search tool - use it to find current, up-to-date information when the user asks about recent events, news, or anything that may have changed since your knowledge cutoff." : ""}`,
           messages: convertToModelMessages(messages),
           ...(useWebSearch && {
             tools: {
@@ -234,7 +246,7 @@ export const streamChat = httpAction(async (ctx, request) => {
 
         for await (const part of result.fullStream) {
           // Check if stream was cancelled (metadata deleted)
-          const stillActive = await ctx.runQuery(internal.chat.getStreamMetadata, { streamId: _streamId });
+          const stillActive = await ctx.runQuery(internal.chatThread.getStreamMetadata, { streamId: _streamId });
           if (!stillActive) {
             console.log("[streamChat] Stream cancelled, stopping generation");
             wasCancelled = true;
@@ -248,14 +260,13 @@ export const streamChat = httpAction(async (ctx, request) => {
             currentSessionContent = "";
             // Output marker for thinking session start
             const marker = `<!--THINKING_START:${thinkingSessionCount}:${reasoningStartTime}-->`;
-            fullText += marker;
+            fullTextWithReasoning += marker;
             await chunkAppender(marker);
           } else if (part.type === "reasoning-delta") {
             // Stream reasoning tokens
             const delta = (part as { delta?: string; text?: string }).delta ?? (part as { delta?: string; text?: string }).text ?? "";
-            reasoningText += delta;
             currentSessionContent += delta;
-            fullText += delta;
+            fullTextWithReasoning += delta;
             await chunkAppender(delta);
           } else if (part.type === "reasoning-end") {
             // End thinking session with duration
@@ -268,11 +279,10 @@ export const streamChat = httpAction(async (ctx, request) => {
             });
             // Output marker for thinking session end
             const marker = `<!--THINKING_END:${thinkingSessionCount}:${duration}:${totalThinkingTime}-->`;
-            fullText += marker;
+            fullTextWithReasoning += marker;
             await chunkAppender(marker);
           } else if (part.type === "text-delta") {
-            hasStartedText = true;
-            fullText += part.text;
+            fullTextWithReasoning += part.text;
             await chunkAppender(part.text);
           }
         }
@@ -280,24 +290,33 @@ export const streamChat = httpAction(async (ctx, request) => {
         console.error("[streamChat] AI generation failed:", error);
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
         const errorText = `[Error: ${errorMessage}]`;
-        fullText = fullText || errorText;
+        fullTextWithReasoning = fullTextWithReasoning || errorText;
         await chunkAppender(errorText);
       }
 
       // Only update message if not cancelled (cancel already saved the partial content)
       if (!wasCancelled) {
-        await ctx.runMutation(internal.chat.updateMessageContent, {
+        await ctx.runMutation(internal.chatThread.updateMessageContent, {
           messageId: metadata.messageId,
-          content: fullText,
+          content: fullTextWithReasoning,
         });
 
-        await ctx.runMutation(internal.chat.deleteStreamMetadata, {
+        // Generate embedding for assistant message in background
+        if (fullTextWithReasoning.trim().length > 10) {
+          await ctx.scheduler.runAfter(0, internal.messages.generateEmbeddingInternal, {
+            messageId: metadata.messageId,
+            content: fullTextWithReasoning,
+          });
+        }
+
+        await ctx.runMutation(internal.chatThread.deleteStreamMetadata, {
           streamId: _streamId,
         });
       }
     };
 
-    const response = await persistentTextStreaming.stream(
+    // Use persistentTextStreaming.stream() which handles timeout and database persistence
+    const response = await persistentStream(
       ctx,
       request,
       streamId as StreamId,

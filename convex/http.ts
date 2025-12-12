@@ -2,7 +2,7 @@ import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { createOpenAI } from "@ai-sdk/openai";
 import { streamText } from "ai";
-import { streamChat } from "./chat";
+import { streamChat } from "./chatThread";
 
 const http = httpRouter();
 

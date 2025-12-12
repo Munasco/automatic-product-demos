@@ -10,6 +10,11 @@ export function CodeThemeSelector() {
   const [open, setOpen] = useState(false);
 
   const currentTheme = CODE_THEMES.find((t) => t.id === theme);
+  if (!currentTheme) {
+    console.error(
+      `CodeThemeSelector: Theme "${theme}" not found in CODE_THEMES`
+    );
+  }
 
   return (
     <div className="relative">

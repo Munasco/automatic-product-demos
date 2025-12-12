@@ -6,7 +6,13 @@ import { Markdown } from "@/lib/markdown";
 import type { ThinkingSession } from "./thinking-sidebar";
 
 // Animated text with wave effect on each character
-function AnimatedText({ text, animate = true }: { text: string; animate?: boolean }) {
+function AnimatedText({
+  text,
+  animate = true,
+}: {
+  text: string;
+  animate?: boolean;
+}) {
   return (
     <span className="inline-flex">
       {text.split("").map((char, i) => (
@@ -66,7 +72,13 @@ export function ThinkingAccordion({
       >
         <span className="font-medium">
           <AnimatedText
-            text={isThinking ? (title !== "Thinking..." ? title : "Thinking...") : `Thought for ${totalTime}s`}
+            text={
+              isThinking
+                ? title.endsWith("...")
+                  ? title
+                  : `${title}...`
+                : `Thought for ${totalTime}s`
+            }
             animate={isThinking}
           />
         </span>
@@ -87,7 +99,9 @@ export function ThinkingAccordion({
         <div className="mt-2 pl-6 text-sm text-foreground-muted leading-relaxed">
           {/* Title/summary */}
           {title && title !== "Thinking..." && (
-            <p className="font-medium text-foreground-secondary mb-1">{title}</p>
+            <p className="font-medium text-foreground-secondary mb-1">
+              {title}
+            </p>
           )}
           {/* Content - markdown rendered */}
           <Markdown

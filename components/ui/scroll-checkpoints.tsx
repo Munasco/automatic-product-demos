@@ -58,7 +58,12 @@ export function ScrollCheckpoints({
   const scrollToMessage = useCallback(
     (index: number) => {
       const message = messages[index];
-      if (!message) return;
+      if (!message) {
+        console.error(
+          `ScrollCheckpoints: Cannot scroll to message - message at index ${index} not found`
+        );
+        return;
+      }
 
       const element = getMessageElement(message.id);
       if (element) {
@@ -74,7 +79,12 @@ export function ScrollCheckpoints({
   // Track scroll position and update active message
   useEffect(() => {
     const root = containerRef.current;
-    if (!root) return;
+    if (!root) {
+      console.error(
+        "ScrollCheckpoints: Cannot initialize observer - container ref is null"
+      );
+      return;
+    }
 
     // Find the viewport element (Radix ScrollArea uses a viewport child)
     const container =

@@ -1,74 +1,129 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
-import { useMutation, useQuery, useAction } from "convex/react";
-import { useAtom } from "jotai";
+import { useCallback, useState } from "react";
+import { useMutation, useAction } from "convex/react";
+import { useSetAtom } from "jotai";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
-import { isStreamingAtom } from "@/stores/atoms";
+import { shouldStreamAtom } from "@/stores/atoms";
+import { AVAILABLE_MODELS, ModelOption } from "@/stores/atoms";
+import { useConvexErrorHandler } from "./use-convex-error-handler";
+import { useChatThread } from "./use-chats";
 
 interface UseStreamChatOptions {
   chatId: Id<"chats"> | null;
-  model?: string;
+  model: ModelOption;
   reasoningEffort?: "auto" | "deepthink";
   webSearch?: boolean;
 }
 
-export function useStreamChat({ chatId, model = "gpt-5.1", reasoningEffort, webSearch }: UseStreamChatOptions) {
+export function useStreamChat({ chatId, model = AVAILABLE_MODELS[0], reasoningEffort, webSearch }: UseStreamChatOptions) {
   const convexSiteUrl = process.env.NEXT_PUBLIC_CONVEX_SITE_URL;
-  const [isStreaming, setIsStreaming] = useAtom(isStreamingAtom);
+  const setShouldStream = useSetAtom(shouldStreamAtom);
+  const [error, setError] = useState<string | null>(null);
+  const { executeWithErrorHandling } = useConvexErrorHandler();
 
-  const convexMessages = useQuery(api.messages.getAll, chatId ? { chatId } : "skip");
 
-  // Sync streaming state from server (check if any message is streaming)
-  const serverIsStreaming = convexMessages?.some(
-    (msg) => msg.role === "assistant" && msg.streamId && !msg.content
-  ) ?? false;
-
-  // Update local atom when server state changes
-  useEffect(() => {
-    setIsStreaming(serverIsStreaming);
-  }, [serverIsStreaming, setIsStreaming]);
-
-  // Stream URL for components to use
+  const {
+    messages: convexMessages,
+    isLoading: isLoadingConvexMessages,
+    addMessage,
+    threadIsStreaming,
+  } = useChatThread(chatId);
+  if (!convexSiteUrl) {
+    const errorMsg = "Convex site URL is not defined";
+    setError(errorMsg);
+    console.error(errorMsg);
+  }
   const streamUrl = convexSiteUrl
     ? new URL(`${convexSiteUrl}/chat-stream`)
     : null;
 
-  const addMessage = useMutation(api.messages.add);
-  const createStreamMutation = useMutation(api.chat.createStream);
-  const cancelStreamMutation = useMutation(api.chat.cancelStream);
+  const createStreamMutation = useMutation(api.chatThread.createStream);
+  const cancelStreamMutation = useMutation(api.chatThread.cancelStream);
   const createChatMutation = useMutation(api.chats.create);
   const updateTitleMutation = useMutation(api.chats.updateTitle);
   const generateTitleAction = useAction(api.messages.generateTitle);
 
   const sendMessage = useCallback(async (content: string, editVersion?: number) => {
-    if (!chatId || isStreaming) return;
-    setIsStreaming(true); // Optimistic update
-    await addMessage({ chatId, role: "user", content, editVersion });
-    await createStreamMutation({ chatId, model, reasoningEffort, webSearch });
-  }, [chatId, isStreaming, setIsStreaming, addMessage, createStreamMutation, model, reasoningEffort, webSearch]);
+    if (!chatId || threadIsStreaming) return;
 
-  const createChatAndSend = useCallback(async (content: string): Promise<Id<"chats">> => {
-    if (isStreaming) throw new Error("Stream in progress");
+    setShouldStream(true); // Optimistic update
+    setError(null); // Clear previous errors
 
-    setIsStreaming(true); // Optimistic update
+    // Add user message
+    const addMessageStatus = await addMessage("user", content, chatId, undefined, editVersion);
+
+    if (!addMessageStatus) return; // Error handled by executeWithErrorHandling
+
+    // Create stream
+    const streamResult = await executeWithErrorHandling(
+      () => createStreamMutation({ chatId, model: model.id, reasoningEffort, webSearch }),
+      "create-stream"
+    );
+
+    if (!streamResult) {
+      // Rollback optimistic update if stream creation failed
+      setShouldStream(false);
+      console.log("Failed to create stream", streamResult);
+    }
+  }, [chatId, threadIsStreaming, setShouldStream, addMessage, createStreamMutation, model, reasoningEffort, webSearch, executeWithErrorHandling]);
+
+  const createChatAndSend = useCallback(async (content: string): Promise<Id<"chats"> | null> => {
 
     const tempTitle = content.slice(0, 50) + (content.length > 50 ? "..." : "");
-    const newChatId = await createChatMutation({ title: tempTitle });
 
-    await addMessage({ chatId: newChatId, role: "user", content });
+    // Create new chat
+    const newChatResult = await executeWithErrorHandling(
+      () => createChatMutation({ title: tempTitle }),
+      "create-chat"
+    );
 
-    generateTitleAction({ message: content, model })
-      .then((title) => {
-        if (title) updateTitleMutation({ chatId: newChatId, title }).catch(() => { });
-      })
-      .catch(() => { });
+    if (!newChatResult) {
+      setShouldStream(false);
 
-    await createStreamMutation({ chatId: newChatId, model, reasoningEffort, webSearch });
+      console.log("Failed to create chat");
+      return null;
+    }
+
+    const newChatId = newChatResult;
+
+    // Add user message
+    const addMessageStatus = await addMessage("user", content, newChatId);
+
+    if (!addMessageStatus) {
+      setShouldStream(false);
+
+      console.log("Failed to add message");
+      return newChatId; // Return chat ID even if message failed
+    }
+
+    // Generate title (fire and forget with error handling)
+    executeWithErrorHandling(
+      () => generateTitleAction({ message: content, model: model.id }),
+      "generate-title"
+    ).then((titleResult) => {
+      if (titleResult) {
+        executeWithErrorHandling(
+          () => updateTitleMutation({ chatId: newChatId, title: titleResult }),
+          "update-title"
+        );
+      }
+    });
+
+    // Create stream
+    const streamResult = await executeWithErrorHandling(
+      () => createStreamMutation({ chatId: newChatId, model: model.id, reasoningEffort, webSearch }),
+      "create-stream"
+    );
+
+    if (!streamResult) {
+      setShouldStream(false);
+      console.log("Failed to create stream for new chat", streamResult);
+    }
 
     return newChatId;
-  }, [isStreaming, setIsStreaming, createChatMutation, addMessage, createStreamMutation, updateTitleMutation, generateTitleAction, model, reasoningEffort, webSearch]);
+  }, [setShouldStream, createChatMutation, addMessage, createStreamMutation, updateTitleMutation, generateTitleAction, model, reasoningEffort, webSearch, executeWithErrorHandling]);
 
   // Return raw messages - streaming handled by StreamingMessage component
   const messages = (convexMessages ?? []).map((msg) => ({
@@ -81,9 +136,17 @@ export function useStreamChat({ chatId, model = "gpt-5.1", reasoningEffort, webS
 
   const stop = useCallback(async () => {
     if (!chatId) return;
-    setIsStreaming(false); // Immediate local update
-    await cancelStreamMutation({ chatId });
-  }, [chatId, setIsStreaming, cancelStreamMutation]);
+
+    setShouldStream(false); // Immediate local update
+
+    console.log("Stopping stream...");
+    setError(null); // Clear previous errors
+
+    await executeWithErrorHandling(
+      () => cancelStreamMutation({ chatId }),
+      "cancel-stream"
+    );
+  }, [chatId, setShouldStream, cancelStreamMutation, executeWithErrorHandling]);
 
   return {
     messages,
@@ -91,7 +154,9 @@ export function useStreamChat({ chatId, model = "gpt-5.1", reasoningEffort, webS
     sendMessage,
     createChatAndSend,
     stop,
-    isStreaming,
-    isLoadingHistory: chatId !== null && convexMessages === undefined,
+    threadIsStreaming,
+    isLoadingChatHistory: isLoadingConvexMessages,
+    error,
+    clearError: () => setError(null),
   };
 }

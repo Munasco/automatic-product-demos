@@ -11,11 +11,12 @@
 import type * as admin from "../admin.js";
 import type * as canvas from "../canvas.js";
 import type * as canvasComments from "../canvasComments.js";
-import type * as chat from "../chat.js";
+import type * as chatThread from "../chatThread.js";
 import type * as chats from "../chats.js";
 import type * as comments from "../comments.js";
 import type * as http from "../http.js";
 import type * as messages from "../messages.js";
+import type * as utils from "../utils.js";
 
 import type {
   ApiFromModules,
@@ -27,11 +28,12 @@ declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   canvas: typeof canvas;
   canvasComments: typeof canvasComments;
-  chat: typeof chat;
+  chatThread: typeof chatThread;
   chats: typeof chats;
   comments: typeof comments;
   http: typeof http;
   messages: typeof messages;
+  utils: typeof utils;
 }>;
 
 /**
@@ -61,7 +63,7 @@ export declare const internal: FilterApi<
 >;
 
 export declare const components: {
-  persistentTextStreaming: {
+  streaming: {
     lib: {
       addChunk: FunctionReference<
         "mutation",

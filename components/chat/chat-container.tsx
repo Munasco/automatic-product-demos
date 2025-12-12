@@ -1,13 +1,10 @@
 "use client";
 
-import { useState, useCallback, useRef, useMemo } from "react";
+import { useRef, useMemo } from "react";
 import { ChatMessage } from "./message";
 import { ChatInput, type AttachedFile } from "./chat-input";
-import { ThinkingIndicator } from "./thinking-indicator";
-import { Button } from "../ui/button";
-import { ArrowDown } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { type ModelType, type ReasoningEffort } from "@/stores/atoms";
+import { type ModelOption, type ReasoningEffort } from "@/stores/atoms";
 import { Header } from "./header";
 import { useSidebar } from "@/components/ui/sidebar";
 import type { ThinkingSession } from "./thinking-sidebar";
@@ -42,8 +39,8 @@ interface ChatContainerProps {
   onToggleComments?: () => void;
   canvasOpen?: boolean;
   commentsOpen?: boolean;
-  selectedModel?: ModelType;
-  onModelChange?: (modelId: ModelType) => void;
+  selectedModel: ModelOption;
+  onModelChange: (modelId: ModelOption) => void;
   reasoningEffort?: ReasoningEffort;
   onReasoningEffortChange?: (effort: ReasoningEffort) => void;
   files?: AttachedFile[];
@@ -84,20 +81,7 @@ export function ChatContainer({
   onWebSearchChange,
   onOpenThinkingSidebar,
 }: ChatContainerProps) {
-  const [showScrollButton, setShowScrollButton] = useState(false);
-  const scrollBottomRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-
-  const scrollToBottom = useCallback(() => {
-    scrollBottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
-
-  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    const target = e.currentTarget;
-    const isAtBottom =
-      target.scrollHeight - target.scrollTop - target.clientHeight < 100;
-    setShowScrollButton(!isAtBottom);
-  }, []);
 
   const isEmpty = messages.length === 0 && !isLoadingHistory;
   const { setOpen: setSidebarOpen, open: sidebarOpen } = useSidebar();
@@ -112,7 +96,7 @@ export function ChatContainer({
     <div className="flex flex-col h-full w-full flex-1">
       <Header
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-        modelName={selectedModel}
+        modelName={selectedModel.id}
       />
       {/* Messages area */}
       <div className="flex-1 overflow-hidden relative">
@@ -127,11 +111,7 @@ export function ChatContainer({
               messages={messageCheckpoints}
               containerRef={scrollAreaRef}
             />
-            <ScrollArea
-              ref={scrollAreaRef}
-              className="h-full"
-              onScroll={handleScroll}
-            >
+            <ScrollArea ref={scrollAreaRef} className="h-full">
               <div className="max-w-5xl mx-auto px-4 py-6">
                 {messages.map((message, index) => (
                   <ChatMessage
@@ -140,34 +120,20 @@ export function ChatContainer({
                     streamUrl={streamUrl}
                     onFork={() => onFork?.(index)}
                     onRegenerate={() => onRegenerate?.(index)}
-                    onEdit={onEditMessage ? (content) => onEditMessage(message.id, content) : undefined}
+                    onEdit={
+                      onEditMessage
+                        ? (content) => onEditMessage(message.id, content)
+                        : undefined
+                    }
                     onComment={onComment}
                     onAskAI={onAskAI}
                     onOpenThinkingSidebar={onOpenThinkingSidebar}
                   />
                 ))}
                 {/* Show thinking indicator when loading with no assistant response yet */}
-                {isStreaming &&
-                  (messages.length === 0 ||
-                    messages[messages.length - 1]?.role === "user") && (
-                    <ThinkingIndicator title="Thinking" isThinking={true} />
-                  )}
-                <div ref={scrollBottomRef} />
               </div>
             </ScrollArea>
           </>
-        )}
-
-        {/* Scroll to bottom button */}
-        {showScrollButton && !isEmpty && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute bottom-4 left-1/2 -translate-x-1/2 size-8 rounded-full bg-background-secondary border border-border shadow-md hover:bg-background-hover"
-            onClick={scrollToBottom}
-          >
-            <ArrowDown className="size-4" />
-          </Button>
         )}
       </div>
 

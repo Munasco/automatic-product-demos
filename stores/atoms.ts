@@ -4,7 +4,8 @@ import { nanoid } from "nanoid";
 
 export const MODELS_AVAILABLE = [
     "gpt-5.1",
-    "gpt-5.1-codex-mini"
+    "gpt-5.1-codex-mini",
+    "gpt-5.2"
 ] as const;
 
 export type ModelType = typeof MODELS_AVAILABLE[number];
@@ -31,7 +32,13 @@ export const AVAILABLE_MODELS: ModelOption[] = [
         description: "Fast coding assistant",
         icon: "cpu",
     },
-];
+    {
+        id: "gpt-5.2",
+        name: "GPT-5.2",
+        description: "Smartest Model",
+        icon: "brain",
+    }
+] as const
 
 export const sessionIdAtom = atomWithStorage<string>(
     "chat-session-id",
@@ -42,9 +49,9 @@ export const sessionIdAtom = atomWithStorage<string>(
     { getOnInit: true }
 );
 
-export const selectedModelAtom = atom<ModelType>("gpt-5.1");
+export const selectedModelAtom = atom<ModelOption>(AVAILABLE_MODELS[0]);
 export const reasoningEffortAtom = atom<ReasoningEffort>("auto");
 export const webSearchAtom = atom<boolean>(false);
 
 // Streaming state - true when generating, set to false to cancel
-export const isStreamingAtom = atom<boolean>(false);
+export const shouldStreamAtom = atom<boolean>(false);

@@ -161,6 +161,12 @@ export function parseThinkingSessions(content: string): {
   for (let i = 0; i < starts.length; i++) {
     const start = starts[i];
     const end = ends.find((e) => e.id === start.id);
+    if (!end) {
+      console.error(
+        `ThinkingSidebar: Cannot find end marker for thinking session ${start.id}`
+      );
+      continue;
+    }
 
     // Find the content between start and end (or end of string if still thinking)
     const startMarker = `<!--THINKING_START:${start.id}:${start.timestamp}-->`;

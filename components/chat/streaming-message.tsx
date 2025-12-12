@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useStream } from "@convex-dev/persistent-text-streaming/react";
+import { useEffect, useMemo } from "react";
+import { useStream } from "@/lib/streaming/useStream";
 import { useAtomValue } from "jotai";
 import { api } from "@/convex/_generated/api";
-import type { StreamId } from "@convex-dev/persistent-text-streaming";
+import type { StreamId } from "@/convex/utils";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ThinkingIndicator } from "./thinking-indicator";
 import { ThinkingAccordion } from "./thinking-accordion";
@@ -13,7 +13,7 @@ import {
   type ThinkingSession,
 } from "./thinking-sidebar";
 import { toast } from "sonner";
-import { isStreamingAtom } from "@/stores/atoms";
+import { shouldStreamAtom } from "@/stores/atoms";
 
 interface StreamingMessageProps {
   streamId?: string;
@@ -24,6 +24,8 @@ interface StreamingMessageProps {
     sessions: ThinkingSession[],
     totalTime: number
   ) => void;
+  onComment?: (selectedText: string) => void;
+  onAskAI?: (selectedText: string) => void;
 }
 
 // Wrapper that decides between streaming and static rendering
@@ -32,6 +34,8 @@ export function StreamingMessage({
   streamUrl,
   initialContent,
   onOpenThinkingSidebar,
+  onComment,
+  onAskAI,
 }: StreamingMessageProps) {
   // Track if this message started as streaming (on initial mount)
   // This prevents switching to StaticMessage mid-stream when DB updates
@@ -44,6 +48,8 @@ export function StreamingMessage({
         streamId={streamId}
         streamUrl={streamUrl}
         onOpenThinkingSidebar={onOpenThinkingSidebar}
+        onComment={onComment}
+        onAskAI={onAskAI}
       />
     );
   }
@@ -54,6 +60,8 @@ export function StreamingMessage({
       <StaticMessage
         content={initialContent}
         onOpenThinkingSidebar={onOpenThinkingSidebar}
+        onComment={onComment}
+        onAskAI={onAskAI}
       />
     );
   }
@@ -66,12 +74,16 @@ export function StreamingMessage({
 function StaticMessage({
   content,
   onOpenThinkingSidebar,
+  onComment,
+  onAskAI,
 }: {
   content: string;
   onOpenThinkingSidebar?: (
     sessions: ThinkingSession[],
     totalTime: number
   ) => void;
+  onComment?: (selectedText: string) => void;
+  onAskAI?: (selectedText: string) => void;
 }) {
   const { sessions, totalTime, cleanContent } = useMemo(() => {
     return parseThinkingSessions(content);
@@ -91,7 +103,12 @@ function StaticMessage({
           onOpenSidebar={handleOpenSidebar}
         />
       )}
-      <MarkdownRenderer content={cleanContent} isStreaming={false} />
+      <MarkdownRenderer
+        content={cleanContent}
+        isStreaming={false}
+        onComment={onComment}
+        onAskAI={onAskAI}
+      />
     </div>
   );
 }
@@ -101,6 +118,8 @@ function ActiveStreamMessage({
   streamId,
   streamUrl,
   onOpenThinkingSidebar,
+  onComment,
+  onAskAI,
 }: {
   streamId: string;
   streamUrl: URL;
@@ -108,11 +127,13 @@ function ActiveStreamMessage({
     sessions: ThinkingSession[],
     totalTime: number
   ) => void;
+  onComment?: (selectedText: string) => void;
+  onAskAI?: (selectedText: string) => void;
 }) {
-  const globalIsStreaming = useAtomValue(isStreamingAtom);
+  const globalIsStreaming = useAtomValue(shouldStreamAtom);
 
   const { text, status } = useStream(
-    api.chat.getStreamBody,
+    api.chatThread.getStreamBody,
     streamUrl,
     globalIsStreaming, // driven by atom state
     streamId as StreamId
@@ -156,7 +177,12 @@ function ActiveStreamMessage({
           onOpenSidebar={handleOpenSidebar}
         />
       )}
-      <MarkdownRenderer content={cleanContent} isStreaming={isStreaming} />
+      <MarkdownRenderer
+        content={cleanContent}
+        isStreaming={isStreaming}
+        onComment={onComment}
+        onAskAI={onAskAI}
+      />
     </div>
   );
 }

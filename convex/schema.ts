@@ -23,7 +23,18 @@ export default defineSchema({
       url: v.string(),
     }))),
     editVersion: v.optional(v.number()), // Track edit count (e.g., 3/3 means 3rd edit)
-  }).index("by_chat", ["chatId", "createdAt"]),
+    embedding: v.optional(v.array(v.float64())), // For RAG search
+  })
+    .index("by_chat", ["chatId", "createdAt"])
+    .searchIndex("search_content", {
+      searchField: "content",
+      filterFields: ["chatId"],
+    })
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536,
+      filterFields: ["chatId"],
+    }),
 
   // Stream metadata for looking up chat context from HTTP actions
   streamMetadata: defineTable({

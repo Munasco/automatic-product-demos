@@ -1,8 +1,8 @@
 // convex/convex.config.ts
 import { defineApp } from "convex/server";
-import persistentTextStreaming from "@convex-dev/persistent-text-streaming/convex.config.js";
+import streaming from "./streaming/convex.config";
 
 const app = defineApp();
-app.use(persistentTextStreaming);
+app.use(streaming);
 
 export default app;
