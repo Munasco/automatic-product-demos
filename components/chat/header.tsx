@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import {
@@ -8,9 +9,11 @@ import {
   Share,
   MessageSquare,
   Columns,
+  Settings,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { CodeThemeSelector } from "../code-theme-selector";
+import { SettingsDialog } from "../settings-dialog";
 
 interface HeaderProps {
   onToggleSidebar: () => void;
@@ -31,8 +34,11 @@ export function Header({
   commentsOpen = false,
   canvasOpen = false,
 }: HeaderProps) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
   return (
-    <header className="flex items-center justify-between h-14 px-3 border-b border-border">
+    <>
+      <header className="flex items-center justify-between h-14 px-3 border-b border-border">
       {/* Left side */}
       <div className="flex items-center gap-2">
         <Tooltip>
@@ -130,12 +136,23 @@ export function Header({
           <TooltipContent side="bottom">Share</TooltipContent>
         </Tooltip>
 
-        <Button variant="ghost" size="icon" className="size-9">
-          <div className="size-7 rounded-full bg-accent flex items-center justify-center text-sm font-medium text-background">
-            M
-          </div>
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-9 text-foreground-muted hover:text-foreground"
+              onClick={() => setSettingsOpen(true)}
+            >
+              <Settings className="size-5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Settings</TooltipContent>
+        </Tooltip>
       </div>
     </header>
+
+    <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+    </>
   );
 }

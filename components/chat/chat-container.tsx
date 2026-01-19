@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, useCallback, useEffect, useState } from "react";
 import { ChatMessage } from "./message";
 import { ChatInput, type AttachedFile } from "./chat-input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -8,6 +8,7 @@ import { type ModelOption, type ReasoningEffort } from "@/stores/atoms";
 import { Header } from "./header";
 import { useSidebar } from "@/components/ui/sidebar";
 import type { ThinkingSession } from "./thinking-sidebar";
+import { ArrowDown } from "lucide-react";
 import {
   ScrollCheckpoints,
   createMessageCheckpoints,
@@ -31,8 +32,9 @@ interface ChatContainerProps {
   onFork?: (messageIndex: number) => void;
   onRegenerate?: (messageIndex: number) => void;
   onEditMessage?: (messageId: string, content: string) => void;
-  onComment?: (selectedText: string) => void;
+  onComment?: (messageId: string, selectedText: string) => void;
   onAskAI?: (selectedText: string) => void;
+  commentCount?: number;
   isStreaming?: boolean;
   isLoadingHistory?: boolean;
   onToggleCanvas?: () => void;
@@ -65,6 +67,7 @@ export function ChatContainer({
   onEditMessage,
   onComment,
   onAskAI,
+  commentCount,
   isStreaming = false,
   isLoadingHistory = false,
   onToggleCanvas,
@@ -82,6 +85,7 @@ export function ChatContainer({
   onOpenThinkingSidebar,
 }: ChatContainerProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
   const isEmpty = messages.length === 0 && !isLoadingHistory;
   const { setOpen: setSidebarOpen, open: sidebarOpen } = useSidebar();
@@ -91,6 +95,41 @@ export function ChatContainer({
     () => createMessageCheckpoints(messages),
     [messages]
   );
+
+  // Check scroll position to show/hide scroll-to-bottom button
+  useEffect(() => {
+    const scrollContainer = scrollAreaRef.current;
+    if (!scrollContainer) return;
+
+    const checkScroll = () => {
+      const viewport = scrollContainer.querySelector('[data-radix-scroll-area-viewport]');
+      if (!viewport) return;
+
+      const { scrollTop, scrollHeight, clientHeight } = viewport;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      setShowScrollButton(!isNearBottom);
+    };
+
+    const viewport = scrollContainer.querySelector('[data-radix-scroll-area-viewport]');
+    if (viewport) {
+      viewport.addEventListener('scroll', checkScroll);
+      checkScroll(); // Initial check
+      return () => viewport.removeEventListener('scroll', checkScroll);
+    }
+  }, [messages]);
+
+  const scrollToBottom = () => {
+    const scrollContainer = scrollAreaRef.current;
+    if (!scrollContainer) return;
+
+    const viewport = scrollContainer.querySelector('[data-radix-scroll-area-viewport]');
+    if (viewport) {
+      viewport.scrollTo({
+        top: viewport.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  };
 
   return (
     <div className="flex flex-col h-full w-full flex-1">
@@ -125,14 +164,28 @@ export function ChatContainer({
                         ? (content) => onEditMessage(message.id, content)
                         : undefined
                     }
-                    onComment={onComment}
+                    onComment={
+                      onComment
+                        ? (selectedText) => onComment(message.id, selectedText)
+                        : undefined
+                    }
                     onAskAI={onAskAI}
                     onOpenThinkingSidebar={onOpenThinkingSidebar}
                   />
                 ))}
-                {/* Show thinking indicator when loading with no assistant response yet */}
               </div>
             </ScrollArea>
+
+            {/* Scroll to bottom button */}
+            {showScrollButton && (
+              <button
+                onClick={scrollToBottom}
+                className="absolute bottom-4 left-1/2 -translate-x-1/2 p-2 rounded-full bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 shadow-lg transition-all z-10"
+                aria-label="Scroll to bottom"
+              >
+                <ArrowDown className="w-5 h-5 text-zinc-300" />
+              </button>
+            )}
           </>
         )}
       </div>
@@ -156,6 +209,7 @@ export function ChatContainer({
         onFilesChange={onFilesChange}
         webSearch={webSearch}
         onWebSearchChange={onWebSearchChange}
+        commentCount={commentCount}
       />
     </div>
   );

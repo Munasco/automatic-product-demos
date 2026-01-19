@@ -94,7 +94,7 @@ export const generateTitle = action({
   },
   handler: async (_ctx, args) => {
     const { text } = await generateText({
-      model: openai(args.model || "gpt-5.1"),
+      model: openai("gpt-5-mini"),
       system: "Generate a very short title (3-6 words) for this chat based on the user's message. No quotes, no punctuation at the end.",
       prompt: args.message,
     });

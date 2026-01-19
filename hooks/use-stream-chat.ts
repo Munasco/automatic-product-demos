@@ -2,10 +2,10 @@
 
 import { useCallback, useState } from "react";
 import { useMutation, useAction } from "convex/react";
-import { useSetAtom } from "jotai";
+import { useSetAtom, useAtomValue } from "jotai";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
-import { shouldStreamAtom } from "@/stores/atoms";
+import { shouldStreamAtom, googleApiKeyAtom } from "@/stores/atoms";
 import { AVAILABLE_MODELS, ModelOption } from "@/stores/atoms";
 import { useConvexErrorHandler } from "./use-convex-error-handler";
 import { useChatThread } from "./use-chats";
@@ -18,11 +18,11 @@ interface UseStreamChatOptions {
 }
 
 export function useStreamChat({ chatId, model = AVAILABLE_MODELS[0], reasoningEffort, webSearch }: UseStreamChatOptions) {
+  const googleApiKey = useAtomValue(googleApiKeyAtom);
   const convexSiteUrl = process.env.NEXT_PUBLIC_CONVEX_SITE_URL;
   const setShouldStream = useSetAtom(shouldStreamAtom);
   const [error, setError] = useState<string | null>(null);
   const { executeWithErrorHandling } = useConvexErrorHandler();
-
 
   const {
     messages: convexMessages,
@@ -58,7 +58,13 @@ export function useStreamChat({ chatId, model = AVAILABLE_MODELS[0], reasoningEf
 
     // Create stream
     const streamResult = await executeWithErrorHandling(
-      () => createStreamMutation({ chatId, model: model.id, reasoningEffort, webSearch }),
+      () => createStreamMutation({
+        chatId,
+        model: model.id,
+        reasoningEffort,
+        webSearch,
+        googleApiKey: model.id.startsWith("gemini-") ? googleApiKey : undefined,
+      }),
       "create-stream"
     );
 
@@ -67,7 +73,7 @@ export function useStreamChat({ chatId, model = AVAILABLE_MODELS[0], reasoningEf
       setShouldStream(false);
       console.log("Failed to create stream", streamResult);
     }
-  }, [chatId, threadIsStreaming, setShouldStream, addMessage, createStreamMutation, model, reasoningEffort, webSearch, executeWithErrorHandling]);
+  }, [chatId, threadIsStreaming, setShouldStream, addMessage, createStreamMutation, model, reasoningEffort, webSearch, googleApiKey, executeWithErrorHandling]);
 
   const createChatAndSend = useCallback(async (content: string): Promise<Id<"chats"> | null> => {
 
@@ -113,7 +119,13 @@ export function useStreamChat({ chatId, model = AVAILABLE_MODELS[0], reasoningEf
 
     // Create stream
     const streamResult = await executeWithErrorHandling(
-      () => createStreamMutation({ chatId: newChatId, model: model.id, reasoningEffort, webSearch }),
+      () => createStreamMutation({
+        chatId: newChatId,
+        model: model.id,
+        reasoningEffort,
+        webSearch,
+        googleApiKey: model.id.startsWith("gemini-") ? googleApiKey : undefined,
+      }),
       "create-stream"
     );
 
@@ -123,7 +135,7 @@ export function useStreamChat({ chatId, model = AVAILABLE_MODELS[0], reasoningEf
     }
 
     return newChatId;
-  }, [setShouldStream, createChatMutation, addMessage, createStreamMutation, updateTitleMutation, generateTitleAction, model, reasoningEffort, webSearch, executeWithErrorHandling]);
+  }, [setShouldStream, createChatMutation, addMessage, createStreamMutation, updateTitleMutation, generateTitleAction, model, reasoningEffort, webSearch, googleApiKey, executeWithErrorHandling]);
 
   // Return raw messages - streaming handled by StreamingMessage component
   const messages = (convexMessages ?? []).map((msg) => ({

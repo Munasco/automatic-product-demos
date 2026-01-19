@@ -9,7 +9,10 @@ export default defineSchema({
     parentId: v.optional(v.id("chats")),
     forkMessageIndex: v.optional(v.number()),
     forkCount: v.optional(v.number()),
-  }).index("by_updated", ["updatedAt"]),
+    userId: v.optional(v.string()),
+  })
+    .index("by_updated", ["updatedAt"])
+    .index("by_user", ["userId", "updatedAt"]),
 
   messages: defineTable({
     chatId: v.id("chats"),
@@ -44,6 +47,7 @@ export default defineSchema({
     model: v.string(),
     reasoningEffort: v.optional(v.union(v.literal("auto"), v.literal("deepthink"))),
     webSearch: v.optional(v.boolean()),
+    googleApiKey: v.optional(v.string()),
   }).index("by_stream", ["streamId"])
     .index("by_chat_id", ["chatId"]),
 

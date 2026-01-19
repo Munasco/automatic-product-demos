@@ -5,7 +5,8 @@ import { nanoid } from "nanoid";
 export const MODELS_AVAILABLE = [
     "gpt-5.1",
     "gpt-5.1-codex-mini",
-    "gpt-5.2"
+    "gpt-5.2",
+    "gemini-3-flash-preview"
 ] as const;
 
 export type ModelType = typeof MODELS_AVAILABLE[number];
@@ -37,6 +38,12 @@ export const AVAILABLE_MODELS: ModelOption[] = [
         name: "GPT-5.2",
         description: "Smartest Model",
         icon: "brain",
+    },
+    {
+        id: "gemini-3-flash-preview",
+        name: "Gemini 3 Flash",
+        description: "Fast Google model",
+        icon: "zap",
     }
 ] as const
 
@@ -49,9 +56,42 @@ export const sessionIdAtom = atomWithStorage<string>(
     { getOnInit: true }
 );
 
+export const googleApiKeyAtom = atomWithStorage<string>(
+    "google-api-key",
+    "",
+    typeof window === "undefined"
+        ? undefined
+        : createJSONStorage(() => localStorage),
+    { getOnInit: true }
+);
+
 export const selectedModelAtom = atom<ModelOption>(AVAILABLE_MODELS[0]);
 export const reasoningEffortAtom = atom<ReasoningEffort>("auto");
 export const webSearchAtom = atom<boolean>(false);
 
-// Streaming state - true when generating, set to false to cancel
-export const shouldStreamAtom = atom<boolean>(false);
+const shouldStreamBaseAtom = atomWithStorage<boolean>(
+    "should-stream",
+    false,
+
+);
+
+let shouldStreamSetCount = 0;
+
+export const shouldStreamAtom = atom(
+    (get) => get(shouldStreamBaseAtom),
+    (get, set, update: boolean | ((prev: boolean) => boolean)) => {
+        const prev = get(shouldStreamBaseAtom);
+        const next = typeof update === "function" ? update(prev) : update;
+        shouldStreamSetCount += 1;
+
+        if (typeof window !== "undefined") {
+            const stack = new Error().stack;
+            console.log(
+                `[shouldStreamAtom] set #${shouldStreamSetCount} prev=${prev} next=${next}`,
+                { prev, next, stack }
+            );
+        }
+
+        set(shouldStreamBaseAtom, next);
+    }
+);

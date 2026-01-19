@@ -54,6 +54,7 @@ interface ChatInputProps {
   onFilesChange?: (files: AttachedFile[]) => void;
   webSearch?: boolean;
   onWebSearchChange?: (enabled: boolean) => void;
+  commentCount?: number;
 }
 
 export function ChatInput({
@@ -75,6 +76,7 @@ export function ChatInput({
   onFilesChange,
   webSearch = false,
   onWebSearchChange,
+  commentCount = 0,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -358,7 +360,7 @@ export function ChatInput({
                     variant="ghost"
                     size="icon"
                     className={cn(
-                      "size-8",
+                      "size-8 relative",
                       commentsOpen
                         ? "text-accent"
                         : "text-foreground-muted hover:text-foreground"
@@ -366,6 +368,11 @@ export function ChatInput({
                     onClick={onToggleComments}
                   >
                     <MessageSquare className="size-5" />
+                    {commentCount > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 size-4 text-[10px] bg-accent text-background rounded-full flex items-center justify-center">
+                        {commentCount > 9 ? "9+" : commentCount}
+                      </span>
+                    )}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Comments</TooltipContent>

@@ -7,7 +7,6 @@ import type {
     GenericQueryCtx,
 } from "convex/server";
 import { v, type GenericId } from "convex/values";
-import { api } from "./_generated/api.js";
 import type { StreamStatus } from "./streaming/schema";
 import { components } from "./_generated/api";
 
@@ -32,7 +31,7 @@ type RunMutationCtx = {
 type RunQueryCtx = {
     runQuery: GenericQueryCtx<GenericDataModel>["runQuery"];
 };
-export type OpaqueIds<T> = T extends GenericId<infer _T> | string
+export type OpaqueIds<T> = T extends GenericId<string> | string
     ? string
     : T extends (infer U)[]
     ? OpaqueIds<U>[]

@@ -17,12 +17,15 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "3.0.0-beta.62",
+    "@ai-sdk/google": "^2.0.51",
     "@ai-sdk/openai": "3.0.0-beta.71",
     "@ai-sdk/react": "3.0.0-beta.122",
-    "@convex-dev/aggregate": "^0.1.24",
+    "@convex-dev/better-auth": "^0.10.10",
     "@radix-ui/react-avatar": "^1.1.11",
+    "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@radix-ui/react-hover-card": "^1.1.15",
     "@radix-ui/react-scroll-area": "^1.2.10",
     "@radix-ui/react-separator": "^1.1.8",
     "@radix-ui/react-slot": "^1.2.4",
@@ -30,6 +33,7 @@
     "@shikijs/rehype": "^3.19.0",
     "@types/katex": "^0.16.7",
     "ai": "6.0.0-beta.122",
+    "better-auth": "^1.4.15",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "convex": "^1.31.0",
@@ -76,10 +80,8 @@
     "vitest": "^4.0.15",
     "ws": "^8.18.3"
   },
-  "pnpm": {
-    "overrides": {
-      "@types/react": "19.2.7",
-      "@types/react-dom": "19.2.3"
-    }
+  "overrides": {
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3"
   }
 }

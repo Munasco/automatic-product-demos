@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import type { Id } from "../convex/_generated/dataModel";
 import { api } from "../convex/_generated/api";
@@ -9,10 +9,12 @@ import { ChatContainer } from "./chat/chat-container";
 import { CanvasPanel } from "./canvas/canvas-panel";
 import { DebugPanel } from "./debug-panel";
 import { ThinkingSidebar, type ThinkingSession } from "./chat/thinking-sidebar";
+import { ChatCommentsSidebar } from "./chat/chat-comments-sidebar";
 import { useChats } from "../hooks/use-chats";
 import { useStreamChat } from "../hooks/use-stream-chat";
 import { useCanvas } from "../hooks/use-canvas";
 import { useCanvasComments } from "../hooks/use-canvas-comments";
+import { useChatComments } from "../hooks/use-comments";
 import type { AttachedFile } from "./chat/chat-input";
 import { Button } from "./ui/button";
 import { useAtom } from "jotai";
@@ -104,7 +106,7 @@ function groupChatsByTime(
   return sortedKeys.map((key) => ({ label: key, chats: groups[key] }));
 }
 
-export function ChatPage({ chatId }: { chatId: Id<"chats"> | undefined }) {
+export function ChatPage({ chatId }: { chatId?: Id<"chats"> | undefined }) {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedModel, setSelectedModel] = useAtom(selectedModelAtom);
@@ -114,21 +116,20 @@ export function ChatPage({ chatId }: { chatId: Id<"chats"> | undefined }) {
   const [inputValue, setInputValue] = useState("");
   const [canvasContent, setCanvasContent] = useState("");
   const [canvasOpen, setCanvasOpen] = useState(false);
+  const [commentsSidebarOpen, setCommentsSidebarOpen] = useState(false);
   const [thinkingSidebarOpen, setThinkingSidebarOpen] = useState(false);
   const [thinkingSessions, setThinkingSessions] = useState<ThinkingSession[]>(
     []
   );
   const [thinkingTotalTime, setThinkingTotalTime] = useState(0);
+  const [pendingComment, setPendingComment] = useState<{
+    messageId: string;
+    selectedText: string;
+  } | null>(null);
 
   // Get chat list from Convex
-  const {
-    chats,
-    isLoading: isLoadingChats,
-    isLoadingMore,
-    canLoadMore,
-    loadMore,
-    removeChat,
-  } = useChats();
+  const { chats, isLoadingMore, canLoadMore, loadMore, removeChat } =
+    useChats();
 
   // Ref for scroll detection
   const sidebarContentRef = useRef<HTMLDivElement>(null);
@@ -191,6 +192,10 @@ export function ChatPage({ chatId }: { chatId: Id<"chats"> | undefined }) {
     requestAIReply,
   } = useCanvasComments(canvasDocument?._id ?? null, canvasContent);
 
+  // Chat comments hook
+  const { comments: chatComments, unresolvedCount: unresolvedCommentCount } =
+    useChatComments(chatId ?? null);
+
   // Edit message mutation - deletes from edited message onward and resends
   const removeMessageMutation = useMutation(api.messages.remove);
 
@@ -221,17 +226,14 @@ export function ChatPage({ chatId }: { chatId: Id<"chats"> | undefined }) {
     setInputValue(prompt);
   }, []);
 
-  // Handle Comment on message selection (brief inline response)
-  const handleMessageComment = useCallback((selectedText: string) => {
-    const prompt = `Briefly clarify or comment on this:\n\n"${selectedText}"`;
-    setInputValue(prompt);
-  }, []);
-
-  // Handle Ask AI on message selection (full detailed response)
-  const handleMessageAskAI = useCallback((selectedText: string) => {
-    const prompt = `Regarding: "${selectedText}"\n\nPlease explain this in detail.`;
-    setInputValue(prompt);
-  }, []);
+  // Handle Comment on message selection - opens sidebar with pending comment
+  const handleMessageComment = useCallback(
+    (messageId: string, selectedText: string) => {
+      setPendingComment({ messageId, selectedText });
+      setCommentsSidebarOpen(true);
+    },
+    []
+  );
 
   // Handle opening thinking sidebar
   const handleOpenThinkingSidebar = useCallback(
@@ -274,28 +276,42 @@ export function ChatPage({ chatId }: { chatId: Id<"chats"> | undefined }) {
     [messages, removeMessageMutation, sendMessage]
   );
 
-  // Navigate helper
-  const navigate = useCallback(
+  const navigateToChatThread = useCallback(
     (newChatId: Id<"chats"> | null) => {
       const url = newChatId ? `/c/${newChatId}` : "/";
+
       router.push(url);
     },
     [router]
+  );
+
+  // Handle Ask AI on message selection - immediately sends the message
+  const handleMessageAskAI = useCallback(
+    async (selectedText: string) => {
+      const prompt = `Regarding: "${selectedText}"\n\nPlease explain this in detail.`;
+      if (!chatId) {
+        const newChatId = await createChatAndSend(prompt);
+        navigateToChatThread(newChatId);
+      } else {
+        await sendMessage(prompt);
+      }
+    },
+    [chatId, createChatAndSend, sendMessage, navigateToChatThread]
   );
 
   // Handle new chat button
   const handleNewChat = useCallback(() => {
     setInputValue("");
     setFiles([]);
-    navigate(null);
-  }, [navigate]);
+    navigateToChatThread(null);
+  }, [navigateToChatThread]);
 
   // Handle chat selection
   const handleSelectChat = useCallback(
     (selectedChatId: Id<"chats">) => {
-      navigate(selectedChatId);
+      navigateToChatThread(selectedChatId);
     },
-    [navigate]
+    [navigateToChatThread]
   );
 
   // Handle chat deletion
@@ -304,10 +320,10 @@ export function ChatPage({ chatId }: { chatId: Id<"chats"> | undefined }) {
       e.stopPropagation();
       await removeChat(deleteChatId);
       if (chatId === deleteChatId) {
-        navigate(null);
+        navigateToChatThread(null);
       }
     },
-    [removeChat, chatId, navigate]
+    [removeChat, chatId, navigateToChatThread]
   );
 
   // Handle submit
@@ -324,7 +340,7 @@ export function ChatPage({ chatId }: { chatId: Id<"chats"> | undefined }) {
 
     if (!chatId) {
       const newChatId = await createChatAndSend(userMessage);
-      navigate(newChatId);
+      navigateToChatThread(newChatId);
     } else {
       await sendMessage(userMessage);
     }
@@ -334,7 +350,7 @@ export function ChatPage({ chatId }: { chatId: Id<"chats"> | undefined }) {
     chatId,
     createChatAndSend,
     sendMessage,
-    navigate,
+    navigateToChatThread,
   ]);
 
   return (
@@ -352,11 +368,7 @@ export function ChatPage({ chatId }: { chatId: Id<"chats"> | undefined }) {
         </SidebarHeader>
 
         <SidebarContent ref={sidebarContentRef}>
-          {isLoadingChats ? (
-            <div className="px-3 py-2 text-sm text-foreground-muted">
-              Loading chats...
-            </div>
-          ) : chats.length === 0 ? (
+          {chats.length === 0 ? (
             <div className="px-3 py-8 text-center text-sm text-foreground-muted">
               <MessageSquare className="size-8 mx-auto mb-2 opacity-50" />
               <p>No conversations yet</p>
@@ -486,6 +498,11 @@ export function ChatPage({ chatId }: { chatId: Id<"chats"> | undefined }) {
             onWebSearchChange={setWebSearch}
             onToggleCanvas={() => setCanvasOpen(!canvasOpen)}
             canvasOpen={canvasOpen}
+            onToggleComments={() =>
+              setCommentsSidebarOpen(!commentsSidebarOpen)
+            }
+            commentsOpen={commentsSidebarOpen}
+            commentCount={unresolvedCommentCount}
             onOpenThinkingSidebar={handleOpenThinkingSidebar}
           />
         </div>
@@ -512,6 +529,13 @@ export function ChatPage({ chatId }: { chatId: Id<"chats"> | undefined }) {
           totalTime={thinkingTotalTime}
           isOpen={thinkingSidebarOpen}
           onClose={() => setThinkingSidebarOpen(false)}
+        />
+        <ChatCommentsSidebar
+          comments={chatComments}
+          isOpen={commentsSidebarOpen}
+          onClose={() => setCommentsSidebarOpen(false)}
+          pendingComment={pendingComment}
+          onClearPendingComment={() => setPendingComment(null)}
         />
       </SidebarInset>
       <DebugPanel />

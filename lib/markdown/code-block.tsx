@@ -22,18 +22,13 @@ interface Props {
   lang: string;
 }
 
-// Singleton highlighter instance
 let highlighterPromise: Promise<Highlighter> | null = null;
-let highlighterInstance: Highlighter | null = null;
 
 function getHighlighter(): Promise<Highlighter> {
   if (!highlighterPromise) {
     highlighterPromise = createHighlighter({
       themes: [...SHIKI_THEMES],
       langs: [...SHIKI_LANGUAGES],
-    }).then((h) => {
-      highlighterInstance = h;
-      return h;
     });
   }
   return highlighterPromise;
@@ -41,40 +36,37 @@ function getHighlighter(): Promise<Highlighter> {
 
 function CodeBlockInner({ code, lang }: Props) {
   const [copied, setCopied] = useState(false);
-  const [ready, setReady] = useState(!!highlighterInstance);
+  const [highlighter, setHighlighter] = useState<Highlighter | null>(null);
+  useEffect(() => {
+    let active = true;
+
+    async function loadHighlighter() {
+      const h = await getHighlighter();
+      if (!active) return;
+      setHighlighter(h);
+    }
+    loadHighlighter();
+    return () => {
+      active = false;
+    };
+  }, []);
   const theme = useAtomValue(codeThemeAtom);
 
-  useEffect(() => {
-    if (!ready) {
-      getHighlighter().then(() => setReady(true));
-    }
-  }, [ready]);
+  type CompiledTokens = ReturnType<typeof codeToKeyedTokens>;
 
   // Compile tokens using codeToKeyedTokens (lighter than codeToHtml)
-  const compiledTokens = useMemo(() => {
-    if (!highlighterInstance) {
-      console.error(
-        "CodeBlock: highlighterInstance is null, cannot compile tokens"
-      );
-      return null;
-    }
-
+  const compiledTokens = useMemo<CompiledTokens | null>(() => {
+    if (!highlighter) return null;
     const safeLang = (lang || "text") as BundledLanguage;
     const machine = createMagicMoveMachine((code) => {
-      if (!highlighterInstance) {
-        console.error(
-          "CodeBlock: highlighterInstance became null during compilation"
-        );
-        throw new Error("Highlighter instance is null");
-      }
-      return codeToKeyedTokens(highlighterInstance, code, {
+      return codeToKeyedTokens(highlighter, code, {
         lang: safeLang,
         theme,
       });
     }, {});
 
-    return machine.commit(code).current;
-  }, [code, lang, theme]);
+    return machine.commit(code).current as CompiledTokens;
+  }, [code, lang, theme, highlighter]);
 
   const copy = useCallback(async () => {
     await navigator.clipboard.writeText(code);

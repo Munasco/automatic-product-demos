@@ -1,4 +1,4 @@
-import { atom } from "jotai";
+import { atomWithStorage, createJSONStorage } from "jotai/utils";
 
 // Available themes (VSCode-style)
 export const CODE_THEMES = [
@@ -29,9 +29,14 @@ export type CodeThemeId = (typeof CODE_THEMES)[number]["id"];
 
 const DEFAULT_THEME: CodeThemeId = "github-dark-high-contrast";
 
-// Simple atom without localStorage persistence
-// TODO: Add localStorage persistence if needed in future
-export const codeThemeAtom = atom<CodeThemeId>(DEFAULT_THEME);
+const codeThemeStorage =
+  typeof window === "undefined"
+    ? undefined
+    : createJSONStorage<CodeThemeId>(() => localStorage);
 
-// Alias for backwards compat
-export const codeThemeWithPersistAtom = codeThemeAtom;
+export const codeThemeAtom = atomWithStorage<CodeThemeId>(
+  "code-theme",
+  DEFAULT_THEME,
+  codeThemeStorage,
+  { getOnInit: true }
+);

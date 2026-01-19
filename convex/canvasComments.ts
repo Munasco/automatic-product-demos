@@ -115,11 +115,13 @@ export const addAIReply = action({
     canvasContent: v.string(),
   },
   handler: async (ctx, args) => {
+    const model = "gpt-5.1";
     const prompt = `Comment: "${args.commentContent}"${args.selectedText ? `\n\nSelected text being discussed:\n"${args.selectedText}"` : ""}${args.canvasContent ? `\n\nFull document context:\n${args.canvasContent.slice(0, 2000)}` : ""}\n\nProvide a detailed, helpful response to this comment.`;
 
     const { text } = await generateText({
-      model: openai("gpt-5.1"),
+      model: openai(model),
       system: `You are a helpful assistant responding to comments in a code/document editor. Provide detailed, thorough, and verbose explanations. Be comprehensive and helpful.
+Current model id: ${model}.
 
 Key guidelines:
 - Give detailed explanations with examples when relevant

@@ -3,8 +3,13 @@ import { httpAction } from "./_generated/server";
 import { createOpenAI } from "@ai-sdk/openai";
 import { streamText } from "ai";
 import { streamChat } from "./chatThread";
+import { authComponent, createAuth } from "./auth";
 
 const http = httpRouter();
+
+authComponent.registerRoutes(http, createAuth, {
+  cors: true,
+});
 
 const openai = createOpenAI({
   apiKey: process.env.OPENAI_KEY || process.env.OPENAI_API_KEY,

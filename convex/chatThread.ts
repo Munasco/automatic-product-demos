@@ -2,11 +2,33 @@ import { ConvexError, v } from "convex/values";
 import { mutation, query, httpAction, internalMutation, internalQuery } from "./_generated/server";
 import { components, internal } from "./_generated/api";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { streamText, convertToModelMessages, type UIMessage } from "ai";
 import {
   createStream as createPersistentStream, getStreamBody as getPersistentStreamBody,
   stream as persistentStream, type StreamId
 } from "./utils";
+
+function encodeMarker(payload: unknown) {
+  return encodeURIComponent(JSON.stringify(payload));
+}
+
+function toolCallMarker(payload: unknown) {
+  return `<!--TOOL_CALL:${encodeMarker(payload)}-->`;
+}
+
+function toolResultMarker(payload: unknown) {
+  return `<!--TOOL_RESULT:${encodeMarker(payload)}-->`;
+}
+
+function sourceMarker(payload: unknown) {
+  return `<!--SOURCE:${encodeMarker(payload)}-->`;
+}
+
+function getProp<T>(obj: unknown, key: string): T | undefined {
+  if (!obj || typeof obj !== "object") return undefined;
+  return (obj as Record<string, unknown>)[key] as T | undefined;
+}
 
 const openai = createOpenAI({
   apiKey: process.env.OPENAI_KEY
@@ -14,6 +36,10 @@ const openai = createOpenAI({
 if (!openai) {
   throw new ConvexError("Missing OPENAI_KEY");
 }
+
+const googleAI = createGoogleGenerativeAI({
+  apiKey: process.env.GOOGLE_API_KEY,
+});
 
 
 
@@ -24,6 +50,7 @@ export const createStream = mutation({
     model: v.optional(v.string()),
     reasoningEffort: v.optional(v.union(v.literal("auto"), v.literal("deepthink"))),
     webSearch: v.optional(v.boolean()),
+    googleApiKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // Create stream using the component
@@ -44,6 +71,7 @@ export const createStream = mutation({
       model: args.model || "gpt-5.2",
       reasoningEffort: args.reasoningEffort,
       webSearch: args.webSearch,
+      googleApiKey: args.googleApiKey,
     });
 
     await ctx.db.patch(args.chatId, {
@@ -207,6 +235,14 @@ export const streamChat = httpAction(async (ctx, request) => {
     const reasoningEffort = isDeepthink ? "high" : undefined;
     const useWebSearch = metadata.webSearch === true;
 
+    // Determine if using Gemini model
+    const isGeminiModel = model.startsWith("gemini-");
+
+    // Create Google AI provider with user's API key if provided
+    const userGoogleAI = metadata.googleApiKey
+      ? createGoogleGenerativeAI({ apiKey: metadata.googleApiKey })
+      : googleAI;
+
     const generateAIResponse = async (
       _ctx: typeof ctx,
       _request: typeof request,
@@ -218,24 +254,27 @@ export const streamChat = httpAction(async (ctx, request) => {
 
       try {
         const result = streamText({
-          model: openai(model),
+          model: isGeminiModel ? userGoogleAI(model) : openai(model),
           system:
             `You are a helpful AI assistant. Be concise and helpful.
+             Current model id: ${model}.
              Use markdown formatting when appropriate.${useWebSearch ?
               " You have access to a web search tool - use it to find current, up-to-date information when the user asks about recent events, news, or anything that may have changed since your knowledge cutoff." : ""}`,
           messages: convertToModelMessages(messages),
-          ...(useWebSearch && {
+          ...(useWebSearch && !isGeminiModel && {
             tools: {
               web_search: openai.tools.webSearch({}),
             },
             maxSteps: 3,
           }),
-          providerOptions: {
-            openai: {
-              ...(reasoningEffort && { reasoningEffort }),
-              ...(isDeepthink && { reasoningSummary: "detailed" }),
+          ...(!isGeminiModel && {
+            providerOptions: {
+              openai: {
+                ...(reasoningEffort && { reasoningEffort }),
+                ...(isDeepthink && { reasoningSummary: "detailed" }),
+              },
             },
-          },
+          }),
         });
 
         let reasoningStartTime = 0;
@@ -284,6 +323,41 @@ export const streamChat = httpAction(async (ctx, request) => {
           } else if (part.type === "text-delta") {
             fullTextWithReasoning += part.text;
             await chunkAppender(part.text);
+          } else if (part.type === "tool-call") {
+            const toolName = getProp<string>(part, "toolName");
+            const toolCallId = getProp<string>(part, "toolCallId");
+            const input = getProp<unknown>(part, "input");
+            const marker = toolCallMarker({
+              toolName,
+              toolCallId,
+              input,
+            });
+            fullTextWithReasoning += marker;
+            await chunkAppender(marker);
+          } else if (part.type === "tool-result") {
+            const toolName = getProp<string>(part, "toolName");
+            const toolCallId = getProp<string>(part, "toolCallId");
+            const output = getProp<unknown>(part, "output");
+            const error = getProp<unknown>(part, "error");
+            const marker = toolResultMarker({
+              toolName,
+              toolCallId,
+              output,
+              error,
+            });
+            fullTextWithReasoning += marker;
+            await chunkAppender(marker);
+          } else if (part.type === "source") {
+            const sourceType = getProp<string>(part, "sourceType");
+            const title = getProp<string>(part, "title");
+            const url = getProp<string>(part, "url");
+            const marker = sourceMarker({
+              sourceType,
+              title,
+              url,
+            });
+            fullTextWithReasoning += marker;
+            await chunkAppender(marker);
           }
         }
       } catch (error) {
