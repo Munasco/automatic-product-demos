@@ -12,11 +12,9 @@ const siteUrl = process.env.SITE_URL || "http://localhost:3000";
 type AuthComponent = ReturnType<typeof createClient<DataModel, typeof authSchema>>;
 
 export const authComponent: AuthComponent = createClient<DataModel, typeof authSchema>(
-  // @ts-expect-error - betterAuth component types generated after `npx convex dev`
   components.betterAuth,
   {
     verbose: true,
-    // @ts-expect-error - auth module types generated after `npx convex dev`
     authFunctions: internal.auth,
     local: {
       schema: authSchema,
